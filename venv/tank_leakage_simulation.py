@@ -3,6 +3,8 @@ import numpy as np
 import glob
 import math
 import rpy2.robjects as robjects
+import datetime
+import time
 
 # Initialisation, settings
 GAL = 3.78541
@@ -10,6 +12,8 @@ AVG_leak_rate = {'GAL/2': (0.7*(GAL/2), 1.3*(GAL/2)), 'GAL': (0.7*(GAL), 1.3*(GA
 hole_range = {'bottom': (0, 0), 'middle': (0.2, 0.5), 'top': (0.5, 0.75)}
 folder = 'D:/calibrated_30min/WTAF_WSC_csv/normal/*.csv'
 MONTH = 2629743
+COUNTER = 0
+INFO_DF = pd.read_csv('D:/calibrated_30min/WTAF_WSC_csv/info.csv')
 
 def adjust_volume(og, hole_height, leak_rate, start_date, stop_date, reversedSC):
     og['ClosingStock_tc_readjusted'] = og['ClosingStock_Caltc']
@@ -61,7 +65,12 @@ for i in glob.glob(folder):
     Site = i[i.rfind('\\')+1:i.rfind('\\')+5]
     tank = i[i.rfind('\\')+1:]
     tank = tank[:tank.find('_')]
+    tank_no = int(tank[12])
     k = 'G:/Meter error/Pump Cal report/Data/'+ Site + '/' + Site + '_ACal.RDATA'
+    info = INFO_DF[(INFO_DF['Site'] == Site) & (INFO_DF['Tank'] == tank_no)]
+    GET_PARTIAL = info.loc[0, 'Partial']
+
+    # generate strapping chart (Volume -> height)
     robjects.r['load'](k)
     matrix = robjects.r['Cal_Output']
     ob = matrix.rx2(tank).rx2('ND_AMB').rx2('Strap').rx2('Coeff_MinErr')
@@ -74,11 +83,22 @@ for i in glob.glob(folder):
         reversedSC.loc[idx, 'B1'] = 1/row.B1
         reversedSC.loc[idx, 'Intercept'] = -1*row.Intercept / row.B1
 
+    # if only use partial data, slice the df
+    if GET_PARTIAL == 'T':
+        op = time.mktime(datetime.datetime.strptime(info.loc[0, 'Start'], "%d/%m/%Y").timetuple())
+        ed = time.mktime(datetime.datetime.strptime(info.loc[0, 'End'], "%d/%m/%Y").timetuple())
+        df = df[(df['Time_DN'] >= op) & (df['Time_DN'] <= ed)].copy()
+
     duration = (df['Time_DN'].iloc[-1] - df['Time_DN'].iloc[0])/MONTH
     for _, alr in AVG_leak_rate.items():
         leak_rate = np.random.uniform(alr[0], alr[1])
-        hr = np.random.choice(list(hole_range.keys()), 1)[0]
-        hole_height = np.random.uniform(hole_range.get(hr)[0], hole_range.get(hr)[1])*
+        if COUNTER % 3 == 0:
+            hr = 'bottom'
+        elif COUNTER % 3 == 1:
+            hr = 'middle'
+        elif COUNTER % 3 == 2:
+            hr = 'top'
+        hole_height = np.random.uniform(hole_range.get(hr)[0], hole_range.get(hr)[1])
         if MONTH > 12:
             start_date = df['Time_DN'].iloc[0] + np.random.uniform(6*MONTH, 12*MONTH)
             stop_date = np.random.uniform(start_date+3*MONTH, start_date+6*MONTH)
@@ -89,7 +109,7 @@ for i in glob.glob(folder):
             break
         start_date, stop_date = int(start_date), int(stop_date)
 
-        induced_df = adjust_volume(df, hole_height, leak_rate, start_date, stop_date, reversedSC)
+        induced_df = adjust_volume(df, hole_height*max(df['ClosingHeight']), leak_rate, start_date, stop_date, reversedSC)
         induced_df.to_csv(tank + "_" + str(leak_rate) + '_' + str(hole_height) + '.csv')
 
 
