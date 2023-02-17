@@ -5,21 +5,38 @@ import math
 import rpy2.robjects as robjects
 import datetime
 import time
-
+from per_label import assign_period, generate_plots
+import plotly.graph_objects as go
+import plotly
+import os
 # Initialisation, settings
 GAL = 3.78541
-AVG_leak_rate = {'GAL/2': (0.7*(GAL/2), 1.3*(GAL/2)), 'GAL': (0.7*(GAL), 1.3*(GAL)), 'GAL*2': (0.7*(GAL*2), 1.3*(GAL*2))}
+AVG_leak_rate = {'0.05GAL': (0.7*(GAL*0.05), 1.3*(GAL*0.05)), '0.1GAL': (0.7*(GAL*.1), 1.3*(GAL*.1)), '0.2GAL': (0.7*(GAL*.2), 1.3*(GAL*.2))}
 hole_range = {'bottom': (0, 0), 'middle': (0.2, 0.5), 'top': (0.5, 0.75)}
 folder = 'D:/calibrated_30min/WTAF_WSC_csv/normal/*.csv'
 MONTH = 2629743
-COUNTER = 0
-INFO_DF = pd.read_csv('D:/calibrated_30min/WTAF_WSC_csv/info.csv')
 
-def adjust_volume(og, hole_height, leak_rate, start_date, stop_date, reversedSC):
+INFO_DF = pd.read_csv('D:/calibrated_30min/WTAF_WSC_csv/info.csv')
+if os.path.isfile('./simulate_info.csv'):
+    simulate_info = pd.read_csv('simulate_info.csv', index_col=0).reset_index(drop=True)
+    C = simulate_info.index[-1] + 1
+    if simulate_info['Hole_range'].iloc[-1] == 'bottom':
+        COUNTER = 1
+    elif simulate_info['Hole_range'].iloc[-1] == 'middle':
+        COUNTER = 2
+    else:
+        Counter = 0
+else:
+    simulate_info = pd.DataFrame(columns=['Site', 'Tank', 'Leak_rate', 'Hole_range', 'Hole_height', 'Start_date', 'Stop_date', 'File_name'])
+    C = 0
+    COUNTER = 0
+
+def adjust_volume(og, hole_height, leak_rate, start_date, stop_date, reversedSC, tck):
     og['ClosingStock_tc_readjusted'] = og['ClosingStock_Caltc']
     og['OpeningStock_tc_readjusted'] = og['OpeningStock_Caltc']
     og['OpeningHeight_readjusted'] = og['OpeningHeight']
     og['ClosingHeight_readjusted'] = og['ClosingHeight']
+    og['Var_tc_readjusted'] = og['Var_tc']
     before = og[(og['Time_DN'] < start_date)].copy()
 
     leaking = og[(og['Time_DN'] >= start_date) & (og['Time_DN'] <= stop_date)].copy()
@@ -37,8 +54,9 @@ def adjust_volume(og, hole_height, leak_rate, start_date, stop_date, reversedSC)
     cum_var = 0
     for idx, row in leaking.iterrows():
         if row.OpeningHeight_readjusted >= hole_height:
-            leakage = - 0.5 * leak_rate * math.sqrt((row.OpeningHeight_readjusted - hole_height) / (row.HMAX - hole_height))
+            leakage = - (1+tck*(15-row.TankTemp))* 0.5 * leak_rate * math.sqrt((row.OpeningHeight_readjusted - hole_height) / (row.HMAX - hole_height))
             cum_var += leakage
+            leaking.at[idx, 'Var_tc_readjusted'] += leakage
 
         leaking.at[idx, 'ClosingStock_tc_readjusted'] = row.ClosingStock_Caltc + cum_var
         temp = reversedSC['ChangePoint'].loc[lambda x: x >= row.ClosingStock_Caltc + cum_var]
@@ -56,9 +74,33 @@ def adjust_volume(og, hole_height, leak_rate, start_date, stop_date, reversedSC)
             leaking.at[idx, 'OpeningHeight_readjusted'] = leaking.loc[idx-1, 'ClosingHeight_readjusted']
 
     after = og[og['Time_DN'] > stop_date].copy()
-    df = pd.concat([before, leaking, after])
-    return df
+    res = pd.concat([before, leaking, after])
+    return res
 
+def preprocess(df):
+    transactions, idles, deliveries = assign_period(df)
+    transactions['Cumsum_vartc_readjusted'] = transactions['Var_tc_readjusted'].cumsum()
+    idles['Cumsum_vartc_readjusted'] = idles['Var_tc_readjusted'].cumsum()
+    deliveries['Cumsum_vartc_readjusted'] = deliveries['Var_tc_readjusted'].cumsum()
+    return transactions, idles, deliveries
+
+def add(fig, transactions, idles, deliveries):
+    fig.add_trace(go.Scatter(x=transactions['Time'], y=transactions['Cumsum_vartc_readjusted'],
+                             mode='markers',
+                             fillcolor='green',
+                             opacity=0.7,
+                             name='transactions'))
+    fig.add_trace(go.Scatter(x=idles['Time'], y=idles['Cumsum_vartc_readjusted'],
+                             mode='markers',
+                             fillcolor='blue',
+                             opacity=0.7,
+                             name='idles'))
+    fig.add_trace(go.Scatter(x=deliveries['Time'], y=deliveries['Cumsum_vartc_readjusted'],
+                             mode='markers',
+                             fillcolor='red',
+                             opacity=0.7,
+                             name='deliveries'))
+    return fig
 
 for i in glob.glob(folder):
     df = pd.read_csv(i, index_col=0).reset_index(drop=True)
@@ -66,14 +108,21 @@ for i in glob.glob(folder):
     tank = i[i.rfind('\\')+1:]
     tank = tank[:tank.find('_')]
     tank_no = int(tank[12])
+    grade = int(tank[-1])
+    tck = 0.000843811 if grade == 4 else 0.00125135
+
     k = 'G:/Meter error/Pump Cal report/Data/'+ Site + '/' + Site + '_ACal.RDATA'
     info = INFO_DF[(INFO_DF['Site'] == Site) & (INFO_DF['Tank'] == tank_no)]
-    GET_PARTIAL = info.loc[0, 'Partial']
+    GET_PARTIAL = info['Partial'].iloc[0]
 
     # generate strapping chart (Volume -> height)
     robjects.r['load'](k)
     matrix = robjects.r['Cal_Output']
-    ob = matrix.rx2(tank).rx2('ND_AMB').rx2('Strap').rx2('Coeff_MinErr')
+    names = matrix.names
+    for name in names:
+        if name[:4] == Site and int(name[12]) == tank_no:
+            nt = name
+    ob = matrix.rx2(nt).rx2('ND_AMB').rx2('Strap').rx2('Coeff_MinErr')
     array = np.array(ob)
     sc = pd.DataFrame(data=array,
                       columns=['Intercept', 'B1', 'ChangePoint', 'Count'])
@@ -85,8 +134,8 @@ for i in glob.glob(folder):
 
     # if only use partial data, slice the df
     if GET_PARTIAL == 'T':
-        op = time.mktime(datetime.datetime.strptime(info.loc[0, 'Start'], "%d/%m/%Y").timetuple())
-        ed = time.mktime(datetime.datetime.strptime(info.loc[0, 'End'], "%d/%m/%Y").timetuple())
+        op = time.mktime(datetime.datetime.strptime(info['Start'].iloc[0], "%d/%m/%Y").timetuple())
+        ed = time.mktime(datetime.datetime.strptime(info['End'].iloc[0], "%d/%m/%Y").timetuple())
         df = df[(df['Time_DN'] >= op) & (df['Time_DN'] <= ed)].copy()
 
     duration = (df['Time_DN'].iloc[-1] - df['Time_DN'].iloc[0])/MONTH
@@ -99,17 +148,33 @@ for i in glob.glob(folder):
         elif COUNTER % 3 == 2:
             hr = 'top'
         hole_height = np.random.uniform(hole_range.get(hr)[0], hole_range.get(hr)[1])
-        if MONTH > 12:
+        if duration >= 18:
             start_date = df['Time_DN'].iloc[0] + np.random.uniform(6*MONTH, 12*MONTH)
             stop_date = np.random.uniform(start_date+3*MONTH, start_date+6*MONTH)
-        elif (MONTH < 12) and (MONTH > 6):
+        elif (duration > 12) and (duration < 18):
+            start_date = df['Time_DN'].iloc[0] + np.random.uniform(4*MONTH, 6*MONTH)
+            stop_date = np.random.uniform(start_date+2*MONTH, start_date+4*MONTH)
+        elif (duration < 12) and (duration > 6):
             start_date = df['Time_DN'].iloc[0] + np.random.uniform(2 * MONTH, 3 * MONTH)
             stop_date = np.random.uniform(start_date + 2 * MONTH, df['Time_DN'].iloc[-1] - 1 * MONTH)
         else:
             break
         start_date, stop_date = int(start_date), int(stop_date)
 
-        induced_df = adjust_volume(df, hole_height*max(df['ClosingHeight']), leak_rate, start_date, stop_date, reversedSC)
-        induced_df.to_csv(tank + "_" + str(leak_rate) + '_' + str(hole_height) + '.csv')
+        induced_df = adjust_volume(df, hole_height*max(df['ClosingHeight']), leak_rate, start_date, stop_date, reversedSC, tck)
+        transactions, idles, deliveries = preprocess(induced_df)
+        fig = generate_plots(transactions, idles, deliveries)
+        fig = add(fig, transactions, idles, deliveries)
+        file_name = tank + "_" + str(leak_rate) + '_' + hr + str(hole_height)
+        induced_df.to_csv(file_name + '.csv')
+        fig.update_layout(
+            title=tank
+        )
+        # plotly.offline.plot(fig, filename=file_name + '.html', auto_open=False)
+        simulate_info.loc[C] = [Site, tank_no, leak_rate, hr, hole_height, start_date, stop_date, file_name]
+        C += 1
+
+    COUNTER += 1
+    simulate_info.to_csv('simulate_info.csv')
 
 
