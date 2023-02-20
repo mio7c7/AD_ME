@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 
 class DAIN_Layer(nn.Module):
-    def __init__(self, mode='adaptive_avg', mean_lr=0.00001, gate_lr=0.001, scale_lr=0.00001, input_dim=144):
+    def __init__(self, mode='adaptive_avg', mean_lr=0.00001, gate_lr=0.001, scale_lr=0.00001, input_dim=2):
         super(DAIN_Layer, self).__init__()
         print("Mode = ", mode)
 
