@@ -92,5 +92,4 @@ def update_col(U, A, B, lambda1):
         aj = A[:,j]
         temp = (bj - U.dot(aj))/A[j,j] + uj
         U[:,j] = temp/max(np.linalg.norm(temp), 1)
-    
     return U

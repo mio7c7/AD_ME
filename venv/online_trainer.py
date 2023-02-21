@@ -48,27 +48,48 @@ def dbscan(arr_var, i, arr):
 
 folder = './data/*.npz'
 WINDOW = 10
-mean_lr, std_lr, scale_lr = 1e-06, 0.001, 10
+mean_lr, std_lr, scale_lr = 0.1, 0.1, 1
 
 for i in glob.glob(folder):
     data = np.load(i)
     train_ts, train_dl, test_ts_1gal, test_dl_1gal = data['train_ts'], data['train_dl'], data['test_ts_1gal'], data['test_dl_1gal']
 
     # initialise normalising DAIN model using training batch
-    train_dl_norm = torch.from_numpy(train_dl).float()
-    train_dl_norm = train_dl_norm.reshape((train_dl_norm.shape[0], train_dl_norm.shape[1], 1))
+    train_dl_norm = window(train_dl[:, 1], WINDOW)
+    train_dl_norm = cvt_gen2ary(train_dl_norm)
+    train_dl_norm = torch.from_numpy(train_dl_norm).float()
+    train_dl_norm = train_dl_norm.reshape((train_dl_norm.shape[0], 1, train_dl_norm.shape[1]))
 
-    dean = DAIN_Layer(mode='full', mean_lr=mean_lr, gate_lr='0.001', scale_lr=scale_lr, input_dim=2)
-    dean(train_dl_norm)
+    dean = DAIN_Layer(mode='full', mean_lr=mean_lr, gate_lr='0.1', scale_lr=scale_lr, input_dim=1)
+    norm = dean(train_dl_norm) # dean is initialised with training data, then during the testing phase,
+                               # it should also be recursively updated and return normalised new data
+
+
+    # uncomment if want to see the comparison of normalised data
+    # norm_plot = []
+    # for i in range(norm.shape[0]):
+    #     if i != norm.shape[0] -1:
+    #         k = norm[i, :, 0].item()
+    #         norm_plot.append(k)
+    #     else:
+    #         k = norm[i, :, :].tolist()[0]
+    #         norm_plot = norm_plot + k
+
+    # fig, ax = plt.subplots()
+    # ax.plot(train_dl[:, 0], train_dl[:, 1], color="blue", marker="o")
+    # ax.set_xlabel("time")
+    # ax.set_ylabel("var_tc")
+    # ax.plot(train_dl[:, 0], norm_plot, color="red", marker="o")
+    # plt.show()
 
     # sliding window
-    train_tsw = window(train_ts[:, 1], WINDOW)
-    train_dlw = window(train_dl[:, 1], WINDOW)
-    X_ts, X_dl, = cvt_gen2ary(train_tsw), cvt_gen2ary(train_dlw),
+    # train_tsw = window(train_ts[:, 1], WINDOW)
+    # train_dlw = window(train_dl[:, 1], WINDOW)
+    # X_ts, X_dl, = cvt_gen2ary(train_tsw), cvt_gen2ary(train_dlw),
 
     # initialise omwrpca
-    Lhat, Shat, rank = omwrpca(X_dl.transpose(1, 0), burnin=10, win_size=10, lambda1=1.0 / np.sqrt(200),
-                               lambda2=1.0 / np.sqrt(200) * (10))
+    X_dl = norm.reshape((train_dl_norm.shape[0], train_dl_norm.shape[2])).cpu().detach().numpy()
+    Lhat, Shat, rank = omwrpca(X_dl.transpose(1, 0), burnin=20, win_size=20, lambda1=1.0 / np.sqrt(200), lambda2=1.0 / np.sqrt(200) * (10))
 
 
     #test

@@ -85,8 +85,8 @@ for i in glob.glob(folder):
 # plt.scatter(x=arr[5:-4, 0], y=arr[5:-4, 1], c=labels, cmap=matplotlib.colors.ListedColormap(colors))
 # plt.show()
 
-# db = DBSCAN(eps=2, min_samples=10).fit(arr_var)
-# labels = db.labels_
-# fig = plt.figure(figsize=(20, 10))
-# plt.scatter(x=arr[5:-4, 0], y=arr[5:-4, 1], c=labels, cmap=matplotlib.colors.ListedColormap(colors))
-# plt.show()
+db = DBSCAN(eps=2, min_samples=10).fit(arr_var)
+labels = db.labels_
+fig = plt.figure(figsize=(20, 10))
+plt.scatter(x=arr[5:-4, 0], y=arr[5:-4, 1], c=labels, cmap=matplotlib.colors.ListedColormap(colors))
+plt.show()
