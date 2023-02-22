@@ -7,13 +7,10 @@ from sklearn.cluster import DBSCAN, KMeans, MeanShift
 from sklearn import metrics
 import sys
 import os
-from dain import DAIN_Layer
-import torch
 from rpca.omwrpca import omwrpca
-from torch.nn import CrossEntropyLoss
-from torch.autograd import Variable
-import torch.optim as optim
+import torch
 from torch.utils.data import Dataset, DataLoader
+from dain_utils import TempDataset, MLP, lob_epoch_trainer, train_evaluate_anchored
 
 colors = ['red','green','blue','purple']
 def window(seq, ws=2):
@@ -38,10 +35,6 @@ def preprocess(data, fixed_t):
             del_idx.append(i)
     return np.delete(data, del_idx, axis=0)
 
-def plot_cluster(data, labels):
-    plt.scatter(data[:, 0], y=data[:, 1])
-    plt.show()
-
 def dbscan(arr_var, i, arr):
     db = DBSCAN(eps=0.8, min_samples=20).fit(arr_var)
     labels = db.labels_
@@ -50,42 +43,17 @@ def dbscan(arr_var, i, arr):
     # plt.show()
     plt.savefig(i + '.png')
 
-def lob_epoch_trainer(model, loader, lr=0.0001, optimizer=optim.RMSprop):
-    model.train()
+def plot_cluster(data, labels):
+    plt.scatter(data[:, 0], y=data[:, 1])
+    plt.show()
 
-    model_optimizer = optimizer([
-        {'params': model.mean_layer.parameters(), 'lr': lr * model.mean_lr},
-        {'params': model.scaling_layer.parameters(), 'lr': lr * model.scale_lr},
-        {'params': model.gating_layer.parameters(), 'lr': lr * model.gate_lr},
-    ], lr=lr)
-
-    criterion = CrossEntropyLoss()
-    train_loss, counter = 0, 0
-
-    for (inputs, targets) in loader:
-        model_optimizer.zero_grad()
-
-        inputs, targets = Variable(inputs.cuda()), Variable(targets.cuda())
-        targets = torch.squeeze(targets)
-
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
-
-        loss.backward()
-        model_optimizer.step()
-
-        train_loss += loss.item()
-        counter += inputs.size(0)
-
-    loss = (loss / counter).cpu().data.numpy()
-    return loss
 
 if __name__ == '__main__':
     folder = './data/*.npz'
     WINDOW = 10
-    mean_lr, std_lr, scale_lr = 1e-06, 0.001, 10
+    mean_lr, std_lr, scale_lr = 0.1, 0.00001, 1
     batch_size = 32
-    train_epochs = 20
+    train_epochs = 2
 
     for i in glob.glob(folder):
         data = np.load(i)
@@ -95,43 +63,39 @@ if __name__ == '__main__':
         train_dl_norm = window(train_dl[:, 1], WINDOW)
         train_dl_norm = cvt_gen2ary(train_dl_norm)
         train_dl_norm = torch.from_numpy(train_dl_norm).float()
-        train_dl_norm = train_dl_norm.reshape((train_dl_norm.shape[0], 1, train_dl_norm.shape[1]))
-        train_dl_target = torch.from_numpy(train_dl[9:, 1]).float()
-        train_dataset = train_dl_norm, train_dl_target
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=1)
+        train_dl_norm = train_dl_norm.reshape((train_dl_norm.shape[0], 1, train_dl_norm.shape[1]))[:-1, :, :]
+        train_dl_target = torch.from_numpy(train_dl[10:, 1]).float()
+        train_dataset = TempDataset(train_dl_norm, train_dl_target)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=1, shuffle=True)
 
-        dean = DAIN_Layer(mode='full', mean_lr=mean_lr, gate_lr=scale_lr, scale_lr=std_lr, input_dim=1)
+        dean = MLP(mode='adaptive_avg', mean_lr=mean_lr, gate_lr=scale_lr, scale_lr=std_lr)
         for epoch in range(train_epochs):
             loss = lob_epoch_trainer(model=dean, loader=train_loader)
             print("Epoch ", epoch, "loss: ", loss)
 
-        norm = dean(train_dl_norm)  # dean is initialised with training data, then during the testing phase,
-                                    # it should also be recursively updated and return normalised new data
-
-
-
+        #
+        test_dl_norm = window(test_dl_1gal[:, 1], WINDOW)
+        test_dl_norm = cvt_gen2ary(test_dl_norm)
+        test_dl_norm = torch.from_numpy(test_dl_norm).float()
+        test_dl_norm = test_dl_norm.reshape((test_dl_norm.shape[0], 1, test_dl_norm.shape[1]))[:-1, :, :]
+        test_dl_target = torch.from_numpy(test_dl_1gal[10:, 1]).float()
+        test_dataset = TempDataset(test_dl_norm, test_dl_target)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=1, shuffle=True)
 
         # uncomment if want to see the comparison of normalised data
-        norm_plot = []
-        for i in range(norm.shape[0]):
-            if i != norm.shape[0] - 1:
-                k = norm[i, :, 0].item()
-                norm_plot.append(k)
-            else:
-                k = norm[i, :, :].tolist()[0]
-                norm_plot = norm_plot + k
+        norm = train_evaluate_anchored(dean, test_loader, train_epochs=5)
 
         fig = plt.figure(figsize=(20, 10))
         fig, ax = plt.subplots()
-        ax.plot(dl[:, 0], dl[:, 1], color="blue", marker="o")
+        ax.plot(test_dl_1gal[10:, 0], test_dl_1gal[10:, 1], color="blue", marker="o")
         ax.set_xlabel("time")
         ax.set_ylabel("var_tc")
-        ax.plot(dl[:, 0], norm_plot, color="red", marker="o")
+        ax.plot(test_dl_1gal[10:, 0], norm.detach().numpy(), color="red", marker="o")
         plt.show()
 
         # initialise omwrpca
-        X_dl = norm.reshape((dl_norm.shape[0], dl_norm.shape[2])).cpu().detach().numpy()
-        Lhat, Shat, rank = omwrpca(X_dl.transpose(1, 0), burnin=20, win_size=20, lambda1=1.0 / np.sqrt(200), lambda2=1.0 / np.sqrt(200) * (10))
+        # X_dl = norm.reshape((dl_norm.shape[0], dl_norm.shape[2])).cpu().detach().numpy()
+        # Lhat, Shat, rank = omwrpca(X_dl.transpose(1, 0), burnin=20, win_size=20, lambda1=1.0 / np.sqrt(200), lambda2=1.0 / np.sqrt(200) * (10))
 
 
         #test
@@ -143,11 +107,11 @@ if __name__ == '__main__':
         # test_dl_1gal = preprocess(test_dl_1gal, 4)
         # plot_raw(train_dl)
         # plot_raw(test_dl_1gal)
-        arr = np.concatenate((train_dl, test_dl_1gal), axis=0)
-        arr = np.where(np.isnan(arr), 0, arr)
-        arr_var = window(arr[:, 1], WINDOW)
-        arr_var = cvt_gen2ary(arr_var)
-        dbscan(arr_var, i, arr)
+        # arr = np.concatenate((train_dl, test_dl_1gal), axis=0)
+        # arr = np.where(np.isnan(arr), 0, arr)
+        # arr_var = window(arr[:, 1], WINDOW)
+        # arr_var = cvt_gen2ary(arr_var)
+        # dbscan(arr_var, i, arr)
 
 
     # db_ts = DBSCAN(eps=0.2, min_samples=10).fit(arr)
