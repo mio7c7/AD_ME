@@ -81,7 +81,7 @@ def omwrpca(M, burnin, win_size, lambda1=np.nan, lambda2=np.nan, factor=1):
         U = update_col(U, A, B, lambda1)
         Lhat = np.hstack((Lhat, U.dot(vi).reshape(m,1)))
     
-    return Lhat, Shat, r
+    return Lhat, Shat, r, vi
     
 def update_col(U, A, B, lambda1):
     m, r = U.shape

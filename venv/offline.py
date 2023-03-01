@@ -69,9 +69,9 @@ if __name__ == '__main__':
         train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=1, shuffle=True)
 
         dean = MLP(mode='adaptive_avg', mean_lr=mean_lr, gate_lr=scale_lr, scale_lr=std_lr)
-        for epoch in range(train_epochs):
-            loss = lob_epoch_trainer(model=dean, loader=train_loader)
-            print("Epoch ", epoch, "loss: ", loss)
+        # for epoch in range(train_epochs):
+        #     loss = lob_epoch_trainer(model=dean, loader=train_loader)
+        #     print("Epoch ", epoch, "loss: ", loss)
 
         #
         test_dl_norm = window(test_dl_1gal[:, 1], WINDOW)
