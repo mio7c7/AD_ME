@@ -3,7 +3,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 import scipy.stats as ss
 from itertools import islice
-from scipy.linalg import inv
+from numpy.linalg import inv
+from scipy import stats
 
 class BaseLikelihood(ABC):
     """
