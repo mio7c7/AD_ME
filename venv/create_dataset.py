@@ -26,24 +26,24 @@ for idx, row in simulate_info.iterrows():
         deliveries = df.loc[df['period'] == 2]
 
         if Flag:
-            train_ts = transactions.iloc[:TP][['Time_DN', 'Var_tc']].to_numpy()
-            train_dl = idles.iloc[:TP][['Time_DN', 'Var_tc']].to_numpy()
+            train_ts = transactions.iloc[:TP][['Time_DN', 'Var_tc', 'ClosingHeight_readjusted']].to_numpy()
+            train_dl = idles.iloc[:TP][['Time_DN', 'Var_tc', 'ClosingHeight_readjusted']].to_numpy()
             Flag = False
 
         if row1['Leak_rate'] == 0:
-            test_ts_normal = transactions.iloc[TP:][['Time_DN', 'Var_tc']].to_numpy()
-            test_dl_normal = idles.iloc[TP:][['Time_DN', 'Var_tc']].to_numpy()
+            test_ts_normal = transactions.iloc[TP:][['Time_DN', 'Var_tc', 'ClosingHeight_readjusted']].to_numpy()
+            test_dl_normal = idles.iloc[TP:][['Time_DN', 'Var_tc', 'ClosingHeight_readjusted']].to_numpy()
         elif idx1 == 1:
-            test_ts_05gal = transactions.iloc[TP:][['Time_DN', 'Var_tc_readjusted']].to_numpy()
-            test_dl_05gal = idles.iloc[TP:][['Time_DN', 'Var_tc_readjusted']].to_numpy()
+            test_ts_05gal = transactions.iloc[TP:][['Time_DN', 'Var_tc_readjusted', 'ClosingHeight_readjusted']].to_numpy()
+            test_dl_05gal = idles.iloc[TP:][['Time_DN', 'Var_tc_readjusted', 'ClosingHeight_readjusted']].to_numpy()
             label['test_05gal'] = {row['Start_date'], row['Stop_date']}
         elif idx1 == 2:
-            test_ts_1gal = transactions.iloc[TP:][['Time_DN', 'Var_tc_readjusted']].to_numpy()
-            test_dl_1gal = idles.iloc[TP:][['Time_DN', 'Var_tc_readjusted']].to_numpy()
+            test_ts_1gal = transactions.iloc[TP:][['Time_DN', 'Var_tc_readjusted', 'ClosingHeight_readjusted']].to_numpy()
+            test_dl_1gal = idles.iloc[TP:][['Time_DN', 'Var_tc_readjusted', 'ClosingHeight_readjusted']].to_numpy()
             label['test_1gal'] = {row['Start_date'], row['Stop_date']}
         elif idx1 == 3:
-            test_ts_2gal = transactions.iloc[TP:][['Time_DN', 'Var_tc_readjusted']].to_numpy()
-            test_dl_2gal = idles.iloc[TP:][['Time_DN', 'Var_tc_readjusted']].to_numpy()
+            test_ts_2gal = transactions.iloc[TP:][['Time_DN', 'Var_tc_readjusted', 'ClosingHeight_readjusted']].to_numpy()
+            test_dl_2gal = idles.iloc[TP:][['Time_DN', 'Var_tc_readjusted', 'ClosingHeight_readjusted']].to_numpy()
             label['test_2gal'] = {row['Start_date'], row['Stop_date']}
 
     np.savez(np_name, train_ts=train_ts, train_dl=train_dl,
