@@ -10,6 +10,7 @@ import bayesian_changepoint_detection.online_likelihoods as online_ll
 from bayesian_changepoint_detection.hazard_functions import constant_hazard
 from functools import partial
 import matplotlib.cm as cm
+from time import time
 
 colors = ['red','green','blue','purple']
 def window(seq, ws=2):
@@ -103,22 +104,23 @@ if __name__ == '__main__':
         # statistical
         # train_dl = feature_extraction(train_var_dl)
         # test_dl = feature_extraction(test_var_dl)
-
+        s = time()
         R, maxes = online_changepoint_detection(
-            multi_test, hazard_function, online_ll.MultivariateT(dims=2)
+            multi_test[:6000, ], hazard_function, online_ll.MultivariateT(dims=2, dof=2)
         )
+        print(time()-s)
 
         fig = plt.figure()
         epsilon = 1e-7
         fig, ax = plt.subplots(2, figsize=[18, 16], sharex=True)
-        ax[0].plot(ts, test_var_dl_norm)
+        ax[0].plot(ts[:6000], multi_test[:6000, 1])
         for cp in cps:
             ax[0].axvline(x=cp, color='g', alpha=0.6)
 
         sparsity = 5  # only plot every fifth data for faster display
         density_matrix = -np.log(R[0:-1:sparsity, 0:-1:sparsity] + epsilon)
-        Nw = 10
-        ax[1].plot(ts[Nw:], R[Nw, Nw:-1])
+        Nw = 50
+        ax[1].plot(ts[Nw:6000], R[Nw, Nw:-1])
 
         plt.savefig(i + '.png')
 
