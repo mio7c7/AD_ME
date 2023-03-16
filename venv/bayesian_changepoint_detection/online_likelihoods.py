@@ -89,6 +89,9 @@ class MultivariateT(BaseLikelihood):
         t_dof = self.dof - self.dims + 1
         expanded = np.expand_dims((self.kappa * t_dof) / (self.kappa + 1), (1, 2))
         ret = np.empty(self.t)
+        k = islice(
+                enumerate(zip(t_dof, self.mu, inv(expanded * self.scale))), self.t
+            )
         try:
             # This can't be vectorised due to https://github.com/scipy/scipy/issues/13450
             for i, (df, loc, shape) in islice(
