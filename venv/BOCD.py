@@ -85,6 +85,7 @@ if __name__ == '__main__':
 
     for i in glob.glob(folder):
         data = np.load(i, allow_pickle=True)
+        name = i
         train_ts, train_dl, test_ts_1gal, test_dl_1gal, label = data['train_ts'], data['train_dl'], data['test_ts_1gal'], data['test_dl_1gal'], data['label'].item()
         dl = np.concatenate((train_dl, test_dl_1gal))
         test_dl_1gal = test_dl_1gal[~np.isnan(test_dl_1gal).any(axis=1)]
@@ -106,16 +107,31 @@ if __name__ == '__main__':
         # statistical
         # train_dl = feature_extraction(train_var_dl)
         # test_dl = feature_extraction(test_var_dl)
-        s = time()
+
         # R, maxes = online_changepoint_detection(
         #     multi_test, hazard_function, online_ll.MultivariateT(dims=2, dof=2)
         # )
         bc = BayesianOnlineChangePointDetection(hazard_function, MultivariateT(dims=2, dof=2))
-        rt_mle = np.empty(multi_test.shape)
+        rt_mle = np.empty((multi_test.shape[0],1))
         for i, d in enumerate(multi_test):
+            s = time()
             bc.update(d)
             rt_mle[i] = bc.rt
-        print(time()-s)
+            print(i, time() - s)
+
+        fig = plt.figure()
+        fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
+        ax[0].plot(ts, multi_test[:, 0])
+        for cp in cps:
+            ax[0].axvline(x=cp, color='g', alpha=0.6)
+
+        diff = np.diff(rt_mle, axis=0)
+        ax[1].plot(ts, rt_mle)
+        ax[2].plot(ts[1:], diff)
+        plt.savefig(name + 'bocd.png')
+
+
+        # plt.savefig(i + '.png')
 
         # fig = plt.figure()
         # epsilon = 1e-7
