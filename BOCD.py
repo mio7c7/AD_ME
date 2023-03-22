@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import glob
 from itertools import islice
-from sklearn.cluster import DBSCAN, KMeans, MeanShift
+# from sklearn.cluster import DBSCAN, KMeans, MeanShift
 from sklearn.metrics.pairwise import euclidean_distances
 # from bayesian_changepoint_detection.bayesian_models import online_changepoint_detection
 # import bayesian_changepoint_detection.online_likelihoods as online_ll
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     maximum_storage_time = 3
     esp = 0.1
     hazard_function = partial(constant_hazard, 1440)
-    lambda_= 1440
+    lambda_ = 1440
     delay = 50
     fixed_threshold = 1.5
 
@@ -157,7 +157,7 @@ if __name__ == '__main__':
                 bc._reset()
                 candcps.append(t)
             elif ctr >= lmt-1:
-                bc._reset()
+                bc.prune(NW)
                 tracker += 1
 
 
@@ -172,7 +172,9 @@ if __name__ == '__main__':
         for cp in candcps:
             ax[1].axvline(x=ts[cp], color='g', alpha=0.6)
 
-        plt.savefig(name + 'bocd.png')
+        ax[2].plot(ts, multi_test[:, 1])
+
+        plt.savefig(name + 'bocd2.png')
 
 
         # fig = plt.figure()

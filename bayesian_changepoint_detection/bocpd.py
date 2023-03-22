@@ -219,7 +219,7 @@ class BOCPD(ChangePointDetector):
     def __init__(self, threshold, delay, **kwargs):
         super().__init__(**kwargs)
         self.hazard_function = partial(self.constant_hazard, 800)
-        self.log_likelihood_class = MultivariateT(dims=2, dof=2, mu=0, kappa=10)
+        self.log_likelihood_class = MultivariateT(dims=2, dof=2, kappa=10)
 
         self.len_data_estimate = 1000+2
         self.maxes = np.zeros(self.len_data_estimate)#
@@ -277,7 +277,19 @@ class BOCPD(ChangePointDetector):
         self.maxes = np.zeros(self.len_data_estimate)  #
         self.R = np.zeros((self.len_data_estimate, self.len_data_estimate))
         self.R[0, 0] = 1
-        self.log_likelihood_class = MultivariateT(dims=2, dof=2)
+        self.log_likelihood_class = MultivariateT(dims=2, dof=2, kappa=10)
+
+    def prune(self, NW):
+        old = self.log_likelihood_class
+        self.log_likelihood_class = MultivariateT(dims=2, dof=2, kappa=10)
+        # keep the NW samples value from the last iteration
+        self.log_likelihood_class.mu = old.mu[-NW+1:,:]
+        self.log_likelihood_class.scale = old.scale[-NW+1:,:,:]
+        self.log_likelihood_class.dof = old.dof[:NW]
+        self.log_likelihood_class.kappa = old.kappa[:NW]
+        self.maxes = np.zeros(self.len_data_estimate)  #
+        self.R = np.zeros((self.len_data_estimate, self.len_data_estimate))
+        self.R[0, 0] = 1
 
     def is_multivariate(self):
         return True
