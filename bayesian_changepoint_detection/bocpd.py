@@ -218,7 +218,7 @@ class BOCPD(ChangePointDetector):
 
     def __init__(self, threshold, delay, **kwargs):
         super().__init__(**kwargs)
-        self.hazard_function = partial(self.constant_hazard, 800)
+        self.hazard_function = partial(self.constant_hazard, 300)
         self.log_likelihood_class = MultivariateT(dims=2, dof=2, mu=0, kappa=10)
 
         self.len_data_estimate = 1000+2
