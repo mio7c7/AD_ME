@@ -218,22 +218,24 @@ class BOCPD(ChangePointDetector):
 
     def __init__(self, threshold, delay, **kwargs):
         super().__init__(**kwargs)
-        self.hazard_function = partial(self.constant_hazard, 300)
-        self.log_likelihood_class = MultivariateT(dims=2, dof=2, mu=0, kappa=10)
+        self.hazard_function = partial(self.constant_hazard, 800)
+        self.log_likelihood_class = MultivariateT(dims=2, dof=2, kappa=10)
 
-        self.len_data_estimate = 1000+2
+        self.len_data_estimate = 1000+1
         self.maxes = np.zeros(self.len_data_estimate)#
         self.R = np.zeros((self.len_data_estimate, self.len_data_estimate))
         self.R[0, 0] = 1
         self.threshold = threshold
         self.delay = delay
 
-    def update(self, x, t) -> "ChangePointDetector":
+    def update(self, x, t, reseted, NW) -> "ChangePointDetector":
         self._change_point_detected = False
 
         # Compute the predictive probabilities of the data x
         predprobs = self.log_likelihood_class.pdf(x)
 
+        if reseted:
+            t = t + NW
         # Evaluate the hazard function for this interval
         H = self.hazard_function(np.array(range(t + 1)))
 
@@ -277,7 +279,21 @@ class BOCPD(ChangePointDetector):
         self.maxes = np.zeros(self.len_data_estimate)  #
         self.R = np.zeros((self.len_data_estimate, self.len_data_estimate))
         self.R[0, 0] = 1
-        self.log_likelihood_class = MultivariateT(dims=2, dof=2)
+        self.log_likelihood_class = MultivariateT(dims=2, dof=2, kappa=10)
+
+    def prune(self, NW):
+        old = self.log_likelihood_class
+        orgR = self.R
+        self.log_likelihood_class = MultivariateT(dims=2, dof=2, kappa=10)
+        # keep the NW samples value from the last iteration
+        self.log_likelihood_class.mu = old.mu[-NW-1:,:]
+        self.log_likelihood_class.scale = old.scale[-NW-1:,:,:]
+        self.log_likelihood_class.dof = old.dof[:NW+1]
+        self.log_likelihood_class.kappa = old.kappa[:NW+1]
+        self.log_likelihood_class.t = NW
+        self.maxes = np.zeros(self.len_data_estimate+NW)  #
+        self.R = np.zeros((self.len_data_estimate+NW, self.len_data_estimate+NW))
+        self.R[0: NW+1, NW] = orgR[0: NW+1,-1]
 
     def is_multivariate(self):
         return True

@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import glob
 from itertools import islice
-from sklearn.cluster import DBSCAN, KMeans, MeanShift
+# from sklearn.cluster import DBSCAN, KMeans, MeanShift
 from sklearn.metrics.pairwise import euclidean_distances
 # from bayesian_changepoint_detection.bayesian_models import online_changepoint_detection
 # import bayesian_changepoint_detection.online_likelihoods as online_ll
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     maximum_storage_time = 3
     esp = 0.1
     hazard_function = partial(constant_hazard, 1440)
-    lambda_= 1440
+    lambda_ = 1440
     delay = 50
     fixed_threshold = 1.5
 
@@ -140,15 +140,20 @@ if __name__ == '__main__':
         candcps = []
         lmt = 1000
         tracker = 0
+        reseted = False
         scores = np.zeros(multi_test.shape[0])
         bc = BOCPD(threshold=0.6, delay=NW)
         rt_mle = np.empty((multi_test.shape[0], 1))
         for t, d in enumerate(multi_test):
             ctr = t - last_cp - 1 - lmt*tracker
             s = time()
-            bc.update(d, ctr)
-            scores[t] = bc.R[NW, ctr]
-            print(t, ctr, bc.R[NW, ctr])
+            bc.update(d, ctr, reseted, NW)
+            if reseted:
+                score = bc.R[NW, ctr+NW]
+            else:
+                score = bc.R[NW, ctr]
+            scores[t] = score
+            print(t, ctr, score)
 
             if bc._change_point_detected:
                 print('detected')
@@ -156,9 +161,12 @@ if __name__ == '__main__':
                 tracker = 0
                 bc._reset()
                 candcps.append(t)
+                reseted = False
             elif ctr >= lmt-1:
-                bc._reset()
+                bc.prune(NW)
                 tracker += 1
+                reseted = True
+
 
 
 
@@ -172,7 +180,9 @@ if __name__ == '__main__':
         for cp in candcps:
             ax[1].axvline(x=ts[cp], color='g', alpha=0.6)
 
-        plt.savefig(name + 'bocd.png')
+        ax[2].plot(ts, multi_test[:, 1])
+
+        plt.savefig(name + 'bocd2.png')
 
 
         # fig = plt.figure()
