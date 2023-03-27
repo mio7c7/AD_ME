@@ -6,8 +6,8 @@ import timeit
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from scipy.io import savemat
 import os
-# import plotly.express as px
-# import plotly.graph_objects as go
+import plotly.express as px
+import plotly.graph_objects as go
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 def assign_period(df):
@@ -27,31 +27,31 @@ def assign_period(df):
     deliveries = df.loc[df['period'] == 2]
     return transactions, idles, deliveries
 
-# def generate_plots(transactions, idles, deliveries):
-#     fig = go.Figure()
-#     transactions['Cumsum_var'] = transactions['Var'].cumsum()
-#     transactions['Cumsum_vartc'] = transactions['Var_tc'].cumsum()
-#     idles['Cumsum_var'] = idles['Var'].cumsum()
-#     idles['Cumsum_vartc'] = idles['Var_tc'].cumsum()
-#     deliveries['Cumsum_var'] = deliveries['Var'].cumsum()
-#     deliveries['Cumsum_vartc'] = deliveries['Var_tc'].cumsum()
-#
-#     fig.add_trace(go.Scatter(x=transactions['Time'], y=transactions['Cumsum_vartc'],
-#                              mode='markers',
-#                              fillcolor='green',
-#                              opacity=0.7,
-#                              name='transactions'))
-#     fig.add_trace(go.Scatter(x=idles['Time'], y=idles['Cumsum_vartc'],
-#                              mode='markers',
-#                              fillcolor='blue',
-#                              opacity=0.7,
-#                              name='idles'))
-#     fig.add_trace(go.Scatter(x=deliveries['Time'], y=deliveries['Cumsum_vartc'],
-#                              mode='markers',
-#                              fillcolor='red',
-#                              opacity=0.7,
-#                              name='deliveries'))
-#     return fig
+def generate_plots(transactions, idles, deliveries):
+    fig = go.Figure()
+    transactions['Cumsum_var'] = transactions['Var'].cumsum()
+    transactions['Cumsum_vartc'] = transactions['Var_tc'].cumsum()
+    idles['Cumsum_var'] = idles['Var'].cumsum()
+    idles['Cumsum_vartc'] = idles['Var_tc'].cumsum()
+    deliveries['Cumsum_var'] = deliveries['Var'].cumsum()
+    deliveries['Cumsum_vartc'] = deliveries['Var_tc'].cumsum()
+
+    fig.add_trace(go.Scatter(x=transactions['Time'], y=transactions['Cumsum_vartc'],
+                             mode='markers',
+                             fillcolor='green',
+                             opacity=0.7,
+                             name='transactions'))
+    fig.add_trace(go.Scatter(x=idles['Time'], y=idles['Cumsum_vartc'],
+                             mode='markers',
+                             fillcolor='blue',
+                             opacity=0.7,
+                             name='idles'))
+    fig.add_trace(go.Scatter(x=deliveries['Time'], y=deliveries['Cumsum_vartc'],
+                             mode='markers',
+                             fillcolor='red',
+                             opacity=0.7,
+                             name='deliveries'))
+    return fig
 #
 # file_folder = 'D:/calibrated_30min/temp/'
 #

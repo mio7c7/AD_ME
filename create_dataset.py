@@ -3,8 +3,10 @@ import pandas as pd
 import glob
 from per_label import assign_period
 
-folder = 'D:/calibrated_30min/WTAF_WSC_csv/dataset/'
-simulate_info = pd.read_csv('D:/calibrated_30min/WTAF_WSC_csv/simulate_info.csv').reset_index(drop=True)
+# folder = 'D:/calibrated_30min/WTAF_WSC_csv/dataset/'
+# simulate_info = pd.read_csv('D:/calibrated_30min/WTAF_WSC_csv/simulate_info.csv').reset_index(drop=True)
+folder = 'G:/RQ2 data/'
+simulate_info = pd.read_csv('G:/RQ2 data/simulate_info.csv').reset_index(drop=True)
 #['Site', 'Tank', 'Leak_rate', 'Hole_range', 'Hole_height', 'Start_date', 'Stop_date', 'File_name']
 TP = 720
 

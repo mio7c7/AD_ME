@@ -97,7 +97,7 @@ if __name__ == '__main__':
         test_ts_1gal = test_ts_1gal[~np.isnan(test_ts_1gal).any(axis=1)]
 
         test_dl_1gal = preprocess(test_dl_1gal, fixed_threshold)
-        test_ts_1gal = preprocess(test_dl_1gal, fixed_threshold)
+        test_ts_1gal = preprocess(test_ts_1gal, fixed_threshold)
         train_dl = preprocess(train_dl, fixed_threshold)
         train_ts = preprocess(train_ts, fixed_threshold)
 
@@ -138,11 +138,11 @@ if __name__ == '__main__':
         last_cp = -1
         NW = 50
         candcps = []
-        lmt = 800
+        lmt = 1000
         tracker = 0
         reseted = False
         scores = np.zeros(multi_test.shape[0])
-        bc = BOCPD(threshold=0.6, delay=NW, lmt=lmt)
+        bc = BOCPD(threshold=0.6, delay=NW)
         rt_mle = np.empty((multi_test.shape[0], 1))
         for t, d in enumerate(multi_test):
             ctr = t - last_cp - 1 - lmt*tracker
@@ -167,6 +167,12 @@ if __name__ == '__main__':
                 tracker += 1
                 reseted = True
 
+
+
+
+
+
+        plt.savefig(name + 'bocd2.png')
         fig = plt.figure()
         fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
         ax[0].plot(ts, multi_test[:, 0])
@@ -175,12 +181,9 @@ if __name__ == '__main__':
 
         ax[1].plot(ts, scores)
         for cp in candcps:
-            ax[1].axvline(x=max(0,ts[cp]-NW), color='g', alpha=0.6)
+            ax[1].axvline(x=ts[cp], color='g', alpha=0.6)
 
         ax[2].plot(ts, multi_test[:, 1])
-
-        plt.savefig(name + 'bocd2.png')
-
 
         # fig = plt.figure()
         # fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)

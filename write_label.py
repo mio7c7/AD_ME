@@ -3,8 +3,10 @@ import os
 import numpy as np
 import glob
 
-simulate_info = pd.read_csv('D:/calibrated_30min/WTAF_WSC_csv/simulate_info.csv', index_col=0).reset_index(drop=True)
-folder = 'D:/calibrated_30min/WTAF_WSC_csv/normal/*.csv'
+# simulate_info = pd.read_csv('D:/calibrated_30min/WTAF_WSC_csv/simulate_info.csv', index_col=0).reset_index(drop=True)
+# folder = 'D:/calibrated_30min/WTAF_WSC_csv/normal/*.csv'
+simulate_info = pd.read_csv('G:/RQ2 data/simulate_info.csv', index_col=0).reset_index(drop=True)
+folder = 'G:/RQ2 data/normal/*.csv'
 C = simulate_info.index[-1] + 1
 
 for i in glob.glob(folder):
