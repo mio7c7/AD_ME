@@ -216,12 +216,12 @@ class StudentT():
 
 class BOCPD(ChangePointDetector):
 
-    def __init__(self, threshold, delay, **kwargs):
+    def __init__(self, threshold, delay, lmt, **kwargs):
         super().__init__(**kwargs)
-        self.hazard_function = partial(self.constant_hazard, 800)
+        self.hazard_function = partial(self.constant_hazard, 5760)
         self.log_likelihood_class = MultivariateT(dims=2, dof=2, kappa=10)
 
-        self.len_data_estimate = 1000+1
+        self.len_data_estimate = lmt+1
         self.maxes = np.zeros(self.len_data_estimate)#
         self.R = np.zeros((self.len_data_estimate, self.len_data_estimate))
         self.R[0, 0] = 1
@@ -238,7 +238,8 @@ class BOCPD(ChangePointDetector):
             t = t + NW
         # Evaluate the hazard function for this interval
         H = self.hazard_function(np.array(range(t + 1)))
-
+        m = self.R[0: t + 1, t]
+        k = self.R[0: t + 1, t] * predprobs * (1 - H)
         # Evaluate the growth probabilities
         # Shift the probabilities down and to the right, scaled by the hazard function and the predictive probabilities.
         self.R[1: t + 2, t + 1] = self.R[0: t + 1, t] * predprobs * (1 - H)
@@ -293,7 +294,10 @@ class BOCPD(ChangePointDetector):
         self.log_likelihood_class.t = NW
         self.maxes = np.zeros(self.len_data_estimate+NW)  #
         self.R = np.zeros((self.len_data_estimate+NW, self.len_data_estimate+NW))
-        self.R[0: NW+1, NW] = orgR[0: NW+1,-1]
+        l = orgR[0: NW+1,-1]
+        sum = np.sum(l)
+        l = l / sum
+        self.R[0: NW+1, NW] = l
 
     def is_multivariate(self):
         return True

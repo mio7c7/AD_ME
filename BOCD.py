@@ -138,11 +138,11 @@ if __name__ == '__main__':
         last_cp = -1
         NW = 50
         candcps = []
-        lmt = 1000
+        lmt = 800
         tracker = 0
         reseted = False
         scores = np.zeros(multi_test.shape[0])
-        bc = BOCPD(threshold=0.6, delay=NW)
+        bc = BOCPD(threshold=0.6, delay=NW, lmt=lmt)
         rt_mle = np.empty((multi_test.shape[0], 1))
         for t, d in enumerate(multi_test):
             ctr = t - last_cp - 1 - lmt*tracker
@@ -167,9 +167,6 @@ if __name__ == '__main__':
                 tracker += 1
                 reseted = True
 
-
-
-
         fig = plt.figure()
         fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
         ax[0].plot(ts, multi_test[:, 0])
@@ -178,7 +175,7 @@ if __name__ == '__main__':
 
         ax[1].plot(ts, scores)
         for cp in candcps:
-            ax[1].axvline(x=ts[cp], color='g', alpha=0.6)
+            ax[1].axvline(x=max(0,ts[cp]-NW), color='g', alpha=0.6)
 
         ax[2].plot(ts, multi_test[:, 1])
 
