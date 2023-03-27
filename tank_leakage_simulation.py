@@ -25,7 +25,7 @@ if os.path.isfile('./simulate_info.csv'):
     elif simulate_info['Hole_range'].iloc[-1] == 'middle':
         COUNTER = 2
     else:
-        Counter = 0
+        COUNTER = 0
 else:
     simulate_info = pd.DataFrame(columns=['Site', 'Tank', 'Leak_rate', 'Hole_range', 'Hole_height', 'Start_date', 'Stop_date', 'File_name'])
     C = 0
@@ -170,7 +170,7 @@ for i in glob.glob(folder):
         fig.update_layout(
             title=tank
         )
-        # plotly.offline.plot(fig, filename=file_name + '.html', auto_open=False)
+        plotly.offline.plot(fig, filename=file_name + '.html', auto_open=False)
         simulate_info.loc[C] = [Site, tank_no, leak_rate, hr, hole_height, start_date, stop_date, file_name]
         C += 1
 

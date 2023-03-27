@@ -97,7 +97,7 @@ if __name__ == '__main__':
         test_ts_1gal = test_ts_1gal[~np.isnan(test_ts_1gal).any(axis=1)]
 
         test_dl_1gal = preprocess(test_dl_1gal, fixed_threshold)
-        test_ts_1gal = preprocess(test_dl_1gal, fixed_threshold)
+        test_ts_1gal = preprocess(test_ts_1gal, fixed_threshold)
         train_dl = preprocess(train_dl, fixed_threshold)
         train_ts = preprocess(train_ts, fixed_threshold)
 
@@ -170,6 +170,9 @@ if __name__ == '__main__':
 
 
 
+
+
+        plt.savefig(name + 'bocd2.png')
         fig = plt.figure()
         fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
         ax[0].plot(ts, multi_test[:, 0])
@@ -181,9 +184,6 @@ if __name__ == '__main__':
             ax[1].axvline(x=ts[cp], color='g', alpha=0.6)
 
         ax[2].plot(ts, multi_test[:, 1])
-
-        plt.savefig(name + 'bocd2.png')
-
 
         # fig = plt.figure()
         # fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
