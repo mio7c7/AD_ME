@@ -12,6 +12,7 @@ class StateTracker():
         self.forgetfactor = forgetfactor
 
     def update_centroid(self, new_member):
+        # equation 4.7
         self.mk = self.forgetfactor*self.mk + (1-self.forgetfactor)*new_member
 
     def update_cov(self, new_member):
