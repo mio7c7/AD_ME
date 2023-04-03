@@ -16,6 +16,9 @@ def preprocess(data, fixed_t):
 if __name__ == '__main__':
     folder = './data1/*.npz'
     fixed_threshold = 1.5
+    forgetting_factor = 0.95
+    stabilisation_period = 20
+    p = 10
 
     for i in glob.glob(folder):
         data = np.load(i, allow_pickle=True)
@@ -37,4 +40,13 @@ if __name__ == '__main__':
         test_ht_dl = test_dl_1gal[:, 2]
         multi_test = np.stack((test_var_dl, test_ht_dl), axis=1)
 
-        for t, d in enumerate(multi_test):
+        # initialisation
+        initialsets = multi_test[:stabilisation_period]
+        detector = Detector(forgetting_factor=forgetting_factor, stabilisation_period=stabilisation_period,
+                            p=p)
+        detector.initialisation(initialsets)
+        preds = []
+
+        for ct, value in enumerate(multi_test[stabilisation_period:]):
+            if detector.predict(value, ct):
+                preds.append(stabilisation_period + ct)
