@@ -1,6 +1,6 @@
-from Cluster import EllipsoidalCluster
-from StateTracker import StateTracker
-from distance import MahalanobisDistance
+from .Cluster import EllipsoidalCluster
+from .StateTracker import StateTracker
+from .distance import MahalanobisDistance
 from scipy.stats.distributions import chi2
 import numpy as np
 import numpy.linalg as la
@@ -29,7 +29,7 @@ class Detector():
     def initialisation(self, inputs):
         no = inputs.shape[0]
         centroid = np.mean(inputs, axis=0)
-        inv_cov = np.linalg.inv(np.cov(inputs))
+        inv_cov = np.linalg.inv(np.cov(inputs.T))
         cluster = EllipsoidalCluster(centroid=centroid, inv_cov=inv_cov, no_of_member=no,
                                      dim=inputs.shape[1], last_update=no, alpha=no, beta=no)
         self.Clusters.append(cluster)
@@ -95,11 +95,11 @@ class Detector():
         anomalies_label = []
         for cluster in self.Clusters:
             distance = MahalanobisDistance(new_member, cluster.inv_cov, cluster.centroid)
-            if distance < chi2(self.normal_boundary, cluster.dim):  # normal data points in the cluster
+            if distance < chi2.ppf(self.normal_boundary, cluster.dim):  # normal data points in the cluster
                 mahal_dists.append(distance)
                 member_clusters.append(cluster)
                 anomalies_label.append(-1)
-            elif distance < chi2(self.guard_zone, cluster.dim):  # anomalies no update
+            elif distance < chi2.ppf(self.guard_zone, cluster.dim):  # anomalies no update
                 mahal_dists.append(distance)
                 member_clusters.append(cluster)
                 anomalies_label.append(1)

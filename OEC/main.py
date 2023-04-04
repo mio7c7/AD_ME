@@ -14,7 +14,7 @@ def preprocess(data, fixed_t):
     return np.delete(data, del_idx, axis=0)
 
 if __name__ == '__main__':
-    folder = './data1/*.npz'
+    folder = '../data1/*.npz'
     fixed_threshold = 1.5
     forgetting_factor = 0.95
     stabilisation_period = 20
@@ -50,3 +50,5 @@ if __name__ == '__main__':
         for ct, value in enumerate(multi_test[stabilisation_period:]):
             if detector.predict(value, ct):
                 preds.append(stabilisation_period + ct)
+
+        print(preds)
