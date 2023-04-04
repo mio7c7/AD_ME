@@ -24,6 +24,7 @@ class Detector():
 
         self.change_counter = 0  # to track change point between existing clusters
         self.current_cluster = None
+        self.potential_cp = None
 
     def initialisation(self, inputs):
         no = inputs.shape[0]
@@ -37,43 +38,73 @@ class Detector():
                                          last_update=no, forgetting_factor=self.forgetting_factor)
 
     def predict(self, new_member, ind):
-        if self.determine_membership(new_member, ind=ind) is None:
-            self.anomaly_buffer.append(new_member)
+        if self.determine_membership(new_member, ind=ind):
+            self.anomaly_buffer.append((ind, new_member))
         self.StateTracker.update_cov(new_member)
         self.StateTracker.update_centroid(new_member)
-        if self.new_cluster_detection():
+
+        if self.change_counter >= self.stabilisation_period:
+            self.current_cluster = self.potential_cp
             return True
-        else:
-            return False
+
+        if ind <= self.n_eff:
+            self.StateTracker.last_update += 1
+        if len(self.anomaly_buffer) >= self.p:
+            if self.new_cluster_detection():
+                # an emerging cluster should be formed
+                new = np.empty((0,self.anomaly_buffer[0][1].shape[1]))
+                for idd, value in self.anomaly_buffer:
+                    new = new.vstack(value)
+                no = new.shape[0]
+                centroid = np.mean(new, axis=0)
+                inv_cov = np.linalg.inv(np.cov(new))
+                cluster = EllipsoidalCluster(centroid=centroid, inv_cov=inv_cov, no_of_member=no,
+                                             dim=new.shape[1], last_update=no, alpha=no, beta=no)
+                self.Clusters.append(cluster)
+                self.current_cluster = cluster
+                return True
+            else:
+                self.anomaly_buffer_cleanup(ind)
+                return False
 
     def new_cluster_detection(self, c=2):
         '''
         Compare the centroid of state tracker with current cluster to determine if a new cluster emerge
         :return: Boolean
         '''
-        self.p = len(self.anomaly_buffer)
+        p = len(self.anomaly_buffer)
         ST_eigenvalues, _ = la.eig(self.StateTracker.inv_cov)
         C_eigenvalues, _ = la.eig(self.current_cluster.inv_cov)
         T1 = ST_eigenvalues[np.where(ST_eigenvalues == np.max(ST_eigenvalues))][0]
         T2 = C_eigenvalues[np.where(C_eigenvalues == np.max(C_eigenvalues))][0]
-        # equ 4.9
-        if la.norm(self.StateTracker.mk - self.current_cluster.centroid) >= c * np.sqrt(self.p * np.max(T1, T2)):
+        # equation 4.9
+        if la.norm(self.StateTracker.mk - self.current_cluster.centroid) >= c * np.sqrt(p * np.max(T1, T2)):
             return True
         return False
+
+    def anomaly_buffer_cleanup(self, ind):
+        copy = self.anomaly_buffer
+        for i in range(len(self.anomaly_buffer)):
+            idd, value = self.anomaly_buffer[i]
+            if ind - idd > self.stabilisation_period:
+                copy = copy.pop(i)
 
     def determine_membership(self, new_member, ind):
         mahal_dists = []
         member_clusters = []
+        anomalies_label = []
         for cluster in self.Clusters:
             distance = MahalanobisDistance(new_member, cluster.inv_cov, cluster.centroid)
-            if distance < chi2(cluster.alpha, cluster.dim):  # normal data points in the cluster
+            if distance < chi2(self.normal_boundary, cluster.dim):  # normal data points in the cluster
                 mahal_dists.append(distance)
                 member_clusters.append(cluster)
-            elif distance < chi2(cluster.beta, cluster.dim):  # anomalies no update
+                anomalies_label.append(-1)
+            elif distance < chi2(self.guard_zone, cluster.dim):  # anomalies no update
                 mahal_dists.append(distance)
                 member_clusters.append(cluster)
+                anomalies_label.append(1)
         if len(member_clusters) == 0:
-            return -1
+            return False
         else:
             alld = [1 / pow(i, 2) for i in mahal_dists]
             sum_alld = sum(alld)
@@ -82,8 +113,24 @@ class Detector():
             sorted_weight_index = sorted(range(len(weights)), key=lambda k: weights[k], reverse=True)
             cluster = member_clusters[sorted_weight_index[0]]
             weight = weights[sorted_weight_index[0]]
+            anomaly = anomalies_label[sorted_weight_index[0]]
             cluster.update_centroid(new_member, weight)
             cluster.update_invcov(new_member, weight)
             cluster.update_setting(weight)
             cluster.last_update = ind
             cluster.no_of_member += 1
+
+            if cluster != self.current_cluster:
+                self.change_counter += 1
+                if self.potential_cp is None:
+                    self.potential_cp = cluster
+                elif self.potential_cp != cluster:
+                    self.potential_cp = cluster
+                    self.change_counter = 0
+            else:
+                self.change_counter = 0
+
+            if anomaly == -1:
+                return True
+            else:
+                return False

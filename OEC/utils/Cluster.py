@@ -12,6 +12,11 @@ class EllipsoidalCluster():
         self.dim = dim
         self.last_update = last_update
 
+    def __eq__(self, other):
+        if not isinstance(other, EllipsoidalCluster):
+            return NotImplemented
+        return self.centroid == other.centroid
+
     def update_setting(self, weight):
         # candidate_clusters{member_clusters(k)}.alpha = int64(candidate_clusters{member_clusters(k)}.alpha) + int64(weights(k));
         # candidate_clusters {member_clusters(k)}.beta = int64(candidate_clusters{member_clusters(k)}.beta) + int64(weights(k). ^ 2);
