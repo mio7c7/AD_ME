@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import glob
 from per_label import assign_period
 
 # folder = 'D:/calibrated_30min/WTAF_WSC_csv/dataset/'

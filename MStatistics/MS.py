@@ -1,18 +1,15 @@
 import numpy as np
 import math
 
-
 # import torch
 # U-Statistics MMD https://github.com/ruqizhang/discrete-langevin/blob/97bc36960676a5314016540b7027ae3f51ff4a80/BinaryBNN/GWG_release/mmd.py
 def avg_hamming(x, y):
     diffs = (x[None, :] != y[:, None, :]).astype(float).mean(-1)
     return diffs
 
-
 def exp_avg_hamming(x, y):
     diffs = avg_hamming(x, y)
     return np.exp(-diffs)
-
 
 def compute_gram(x, y):
     """
@@ -46,7 +43,6 @@ def compute_gram(x, y):
 
     return K, kxx, kyy, kxy
 
-
 def compute_statistic(kxx, kyy, kxy):
     """
     Compute MMD test statistic.
@@ -61,12 +57,10 @@ def compute_statistic(kxx, kyy, kxy):
     res = term_xx + term_yy - 2 * term_xy
     return res
 
-
 def compute_mmd(x, y):
     K, kxx, kyy, kxy = compute_gram(x, y)
     stat = compute_statistic(kxx, kyy, kxy)
     return stat
-
 
 class Kernel():
     def __init__(self, b=5, bo=25, N=10):

@@ -301,3 +301,92 @@ class BOCPD(ChangePointDetector):
 
     def is_multivariate(self):
         return True
+
+
+class BOCPD_UNI(ChangePointDetector):
+
+    def __init__(self, threshold, delay, lmt, **kwargs):
+        super().__init__(**kwargs)
+        self.hazard_function = partial(self.constant_hazard, 5760)
+        self.log_likelihood_class = StudentT(kappa=10)
+
+        self.len_data_estimate = lmt+1
+        self.maxes = np.zeros(self.len_data_estimate)#
+        self.R = np.zeros((self.len_data_estimate, self.len_data_estimate))
+        self.R[0, 0] = 1
+        self.threshold = threshold
+        self.delay = delay
+
+    def update(self, x, t, reseted, NW) -> "ChangePointDetector":
+        self._change_point_detected = False
+
+        # Compute the predictive probabilities of the data x
+        predprobs = self.log_likelihood_class.pdf(x)
+
+        if reseted:
+            t = t + NW
+        # Evaluate the hazard function for this interval
+        H = self.hazard_function(np.array(range(t + 1)))
+        m = self.R[0: t + 1, t]
+        k = self.R[0: t + 1, t] * predprobs * (1 - H)
+        # Evaluate the growth probabilities
+        # Shift the probabilities down and to the right, scaled by the hazard function and the predictive probabilities.
+        self.R[1: t + 2, t + 1] = self.R[0: t + 1, t] * predprobs * (1 - H)
+
+        # Evaluate the probability that there *was* a changepoint and we're accumulating the mass back down at r = 0.
+        self.R[0, t + 1] = np.sum(self.R[0: t + 1, t] * predprobs * H)
+
+        # Renormalize the run length probabilities for improved numerical stability.
+        self.R[:, t + 1] = self.R[:, t + 1] / np.sum(self.R[:, t + 1])
+
+        # Update the parameter sets for each possible run length.
+        self.log_likelihood_class.update_theta(x, t=t)
+
+        # Store the index with the maximum probability
+        self.maxes[t] = self.R[:, t].argmax()
+
+        # Check if a change point has been detected
+        # if self.maxes[t-1] - self.maxes[t] > self.threshold:
+        #     self._change_point_detected = True
+
+        if t > self.delay and self.R[self.delay, t] > self.threshold:
+            self._change_point_detected = True
+
+        # Return the updated ChangePointDetector object
+        return self
+
+    def constant_hazard(self, lam, r):
+        """
+        Hazard function for bayesian online learning
+        Arguments:
+            lam - inital prob
+            r - R matrix
+        """
+        return 1 / lam * np.ones(r.shape)
+
+    def _reset(self):
+        super()._reset()
+        self.maxes = np.zeros(self.len_data_estimate)  #
+        self.R = np.zeros((self.len_data_estimate, self.len_data_estimate))
+        self.R[0, 0] = 1
+        self.log_likelihood_class = StudentT(kappa=10)
+
+    def prune(self, NW):
+        old = self.log_likelihood_class
+        orgR = self.R
+        self.log_likelihood_class = StudentT(kappa=10)
+        # keep the NW samples value from the last iteration
+        self.log_likelihood_class.mu = old.mu[-NW-1:]
+        self.log_likelihood_class.alpha = old.alpha[-NW-1:]
+        self.log_likelihood_class.beta = old.beta[:NW+1]
+        self.log_likelihood_class.kappa = old.kappa[:NW+1]
+        self.log_likelihood_class.t = NW
+        self.maxes = np.zeros(self.len_data_estimate+NW)  #
+        self.R = np.zeros((self.len_data_estimate+NW, self.len_data_estimate+NW))
+        l = orgR[0: NW+1,-1]
+        sum = np.sum(l)
+        l = l / sum
+        self.R[0: NW+1, NW] = l
+
+    def is_multivariate(self):
+        return False
