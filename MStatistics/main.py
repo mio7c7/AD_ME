@@ -4,9 +4,8 @@ import glob
 import sys
 import argparse
 # from Evaluation_metrics import recall, False_Alarm_Rate, precision, F1_score, detection_delay
-sys.path.append('C:/Users/Administrator/Documents/GitHub/AD_ME/evaluation/')
+sys.path.append('../evaluation/')
 import Evaluation_metrics
-
 
 def preprocess(data, fixed_t):
     del_idx = []

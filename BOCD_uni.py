@@ -15,12 +15,12 @@ from bayesian_changepoint_detection.bocpd import BOCPD_UNI
 # from bayesian_changepoint_detection.bayesian_online import ConstantHazard, Detector
 import sys
 import argparse
-sys.path.append('C:/Users/Administrator/Documents/GitHub/AD_ME/evaluation/')
+sys.path.append('evaluation/')
 import Evaluation_metrics
 
 parser = argparse.ArgumentParser(description='Mstatistics evaluation on bottom 0.2 data')
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
-parser.add_argument('--NW', type=float, default=50, help='delay')
+parser.add_argument('--NW', type=int, default=50, help='delay')
 parser.add_argument('--threshold', type=float, default=0.6, help='number of reference blocks')
 parser.add_argument('--lmt', type=int, default=1000, help='threshold')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
@@ -159,7 +159,7 @@ if __name__ == '__main__':
         tracker = 0
         reseted = False
         scores = np.zeros(test_var_dl.shape[0])
-        bc = BOCPD_UNI(threshold=args.thtrshold, delay=NW, lmt=lmt)
+        bc = BOCPD_UNI(threshold=args.threshold, delay=NW, lmt=lmt)
         rt_mle = np.empty((test_var_dl.shape[0], 1))
         for t, d in enumerate(test_var_dl):
             ctr = t - last_cp - 1 - lmt*tracker

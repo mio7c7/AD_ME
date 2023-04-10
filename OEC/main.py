@@ -3,7 +3,7 @@ import numpy as np
 import glob
 import sys
 import argparse
-sys.path.append('C:/Users/Administrator/Documents/GitHub/AD_ME/evaluation/')
+sys.path.append('./evaluation/')
 import Evaluation_metrics
 
 parser = argparse.ArgumentParser(description='Mstatistics evaluation on bottom 0.2 data')
