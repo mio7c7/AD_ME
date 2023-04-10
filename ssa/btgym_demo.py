@@ -5,6 +5,7 @@ import glob
 from btgym_ssa import SSA
 
 max_length = 100
+window = 5
 folder = '../data3/*.npz'
 for i in glob.glob(folder):
     data = np.load(i, allow_pickle=True)
@@ -25,26 +26,31 @@ for i in glob.glob(folder):
     # multi_test = np.stack((test_var_dl, test_ht_dl), axis=1)
     # test_var_dl = np.reshape(test_var_dl, (test_var_dl.shape[0],1))
     # initialisation
-    ssa = SSA(window=10, max_length=max_length)
+    ssa = SSA(window=window, max_length=max_length)
     X_new = ssa.reset(test_var_dl[:max_length])
     state = ssa.get_state()
     X_new = ssa.transform(X_new, state=state)
 
     j = max_length
     while j < test_var_dl.shape[0]:
-        new = test_var_dl[j:j + 10]
+        new = test_var_dl[j:j+10]
         updates = ssa.update(new)
-        updates = ssa.transform(updates)
+        state = ssa.get_state()
+        updates = ssa.transform(updates, state=state)[:, -10:]
         X_new = np.concatenate((X_new, updates), axis=1)
         j += 10
 
-    test_var_dl = np.reshape(test_var_dl, (test_var_dl.shape[1]))
-    e = X_new[0, :].reshape(-1,1)
-    e1 = X_new[1, :].reshape(-1, 1)
+    e = X_new[1, :].reshape(-1,1)
+    e1 = X_new[2, :].reshape(-1, 1)
+    e2 = X_new[3, :].reshape(-1, 1)
+    e3 = X_new[4, :].reshape(-1, 1)
 
     fig = plt.figure()
-    fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
+    fig, ax = plt.subplots(5, figsize=[18, 16], sharex=True)
     ax[0].plot(test_var_dl)
     ax[1].plot(e)
     ax[2].plot(e1)
-    plt.show()
+    ax[3].plot(e2)
+    ax[4].plot(e3)
+    # plt.show()
+    plt.savefig(name + 'ssa.png')
