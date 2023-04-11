@@ -3,7 +3,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import glob
 from btgym_ssa import SSA
+from scipy import stats
+import math
 
+outlier_window = 20
+percentile = 0.99
 max_length = 100
 window = 5
 folder = '../data3/*.npz'
@@ -30,6 +34,8 @@ for i in glob.glob(folder):
     X_new = ssa.reset(test_var_dl[:max_length])
     state = ssa.get_state()
     X_new = ssa.transform(X_new, state=state)
+    reconstructed = X_new.sum(axis=0)
+    residuals = test_var_dl[:max_length] - reconstructed
 
     j = max_length
     while j < test_var_dl.shape[0]:
@@ -37,6 +43,19 @@ for i in glob.glob(folder):
         updates = ssa.update(new)
         state = ssa.get_state()
         updates = ssa.transform(updates, state=state)[:, -10:]
+
+        reconstructed = updates.sum(axis=0)
+        residual = new - reconstructed
+        residuals = np.concatenate([residuals, residual])
+
+        for k in range(len(new)):
+            residual_window = residuals[j-2*outlier_window+k:j+k]
+            pci_up = reconstructed[k] + stats.t.ppf(percentile, df=2*outlier_window-1)*np.std(residual_window)*math.sqrt(1+1/(2*outlier_window))
+            pci_low = reconstructed[k] - stats.t.ppf(percentile, df=2 * outlier_window - 1) * np.std(
+                residual_window) * math.sqrt(1 + 1 / (2 * outlier_window))
+            if new[k] > pci_up or new[k] < pci_low:
+                print((new[k], pci_low, pci_up))
+
         X_new = np.concatenate((X_new, updates), axis=1)
         j += 10
 

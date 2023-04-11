@@ -215,6 +215,9 @@ if __name__ == '__main__':
     print('precision: ', prec)
     print('F1 Score: ', f1score)
     print('detection delay: ', dd)
+    npz_filename = args.outfile
+    np.savez(npz_filename,
+             rec=rec, FAR=FAR, prec=prec, f1score=f1score, dd=dd)
 
 
 
