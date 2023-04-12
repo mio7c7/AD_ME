@@ -54,7 +54,7 @@ class Detector():
         if len(self.anomaly_buffer) >= self.p:
             if self.new_cluster_detection():
                 # an emerging cluster should be formed
-                new = np.empty((0,self.anomaly_buffer[0][1].shape[0]))
+                new = np.empty((0,len(self.anomaly_buffer[0])))
                 for idd, value in self.anomaly_buffer:
                     new = np.vstack((new, value))
                 no = new.shape[0]

@@ -3,19 +3,20 @@ import numpy as np
 import glob
 import sys
 import argparse
+import math
 sys.path.append('./')
 from evaluation import Evaluation_metrics
 from ssa.btgym_ssa import SSA
 
 parser = argparse.ArgumentParser(description='Mstatistics evaluation on bottom 0.2 data')
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
+parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
 parser.add_argument('--forgetting_factor', type=float, default=0.9, help='between 0.9 and 1')
 parser.add_argument('--stabilisation_period', type=int, default=30, help='number of reference blocks')
 parser.add_argument('--p', type=float, default=10, help='threshold')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
 parser.add_argument('--outfile', type=str, default='15IQRMED11WND100', help='name of file to save results')
 args = parser.parse_args()
-
 
 def preprocess(data, fixed_t):
     del_idx = []
@@ -56,21 +57,52 @@ if __name__ == '__main__':
         test_var_dl = test_dl_1gal[:, 1]
         test_ht_dl = test_dl_1gal[:, 2]
         multi_test = np.stack((test_var_dl, test_ht_dl), axis=1)
-        test_var_dl = np.reshape(test_var_dl, (test_var_dl.shape[0], 1))
+        # test_var_dl = np.reshape(test_var_dl, (test_var_dl.shape[0], 1))
 
         # initialisation
         # initialsets = multi_test[:stabilisation_period]
-        initialsets = test_var_dl[:stabilisation_period]
+        ssa = SSA(window=args.ssa_window, max_length=100)
+        X = test_var_dl[:stabilisation_period]
+
+        X_pred = ssa.reset(X)
+        X_pred = ssa.transform(X_pred, state=ssa.get_state())
+        reconstructed = X_pred.sum(axis=0)
+        residuals = X - reconstructed
+        resmean = residuals.mean()
+        M2 = ((residuals - resmean) ** 2).sum() * (len(residuals) - 1) * residuals.var()
+
         detector = Detector(forgetting_factor=forgetting_factor, stabilisation_period=stabilisation_period,
                             p=p)
-        detector.initialisation(initialsets)
+        # TODO:test with other channels
+        reconstructed = reconstructed.reshape(-1, 1)
+        detector.initialisation(reconstructed)
         preds = []
+        outliers = []
 
         for ct, value in enumerate(test_var_dl[stabilisation_period:]):
-            if detector.predict(value, ct):
-                preds.append(stabilisation_period + ct)
+            j = ct + stabilisation_period
+            new = np.array([value])
+            updates = ssa.update(new)
+            updates = ssa.transform(updates, state=ssa.get_state())[:, -1]
 
-        # print(preds)
+            reconstructed = updates.sum(axis=0)
+            residual = new - reconstructed
+            residuals = np.concatenate([residuals, residual])
+            delta = residual - resmean
+            resmean += delta / j
+            M2 += delta * (residual - resmean)
+            stdev = math.sqrt(M2 / (j - 1))
+            threshold_upper = resmean + 2 * stdev
+            threshold_lower = resmean - 2 * stdev
+
+            if residual > threshold_upper or residual < threshold_lower:
+                outliers.append(j)
+                continue
+
+            if detector.predict(np.array([reconstructed]), ct):
+                preds.append(j)
+
+        print(preds)
         # fig = plt.figure()
         # fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
         # ax[0].plot(ts, multi_test[:, 0])
