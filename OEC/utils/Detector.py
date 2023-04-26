@@ -10,14 +10,15 @@ class Detector():
     https://github.com/mchenaghlou/OnCAD-PAKDD-2017/blob/1b91d2313cb4eee55ef4423d2731aabb3de2f50b/2.OnCAD/OnCAD.m
     '''
 
-    def __init__(self, forgetting_factor, stabilisation_period, p):
+    def __init__(self, forgetting_factor, stabilisation_period, p, c):
         self.forgetting_factor = forgetting_factor
         self.n_eff = 3 / (1 - self.forgetting_factor)
         self.stabilisation_period = stabilisation_period
         self.normal_boundary = 0.99
         self.guard_zone = 0.999
-        self.p = 10
+        self.p = p
         self.score = []
+        self.c = c # c-separation
 
         self.Clusters = []  # store existing clusters
         self.StateTracker = None
@@ -54,7 +55,7 @@ class Detector():
         if len(self.anomaly_buffer) >= self.p:
             if self.new_cluster_detection():
                 # an emerging cluster should be formed
-                new = np.empty((0,len(self.anomaly_buffer[0])))
+                new = np.empty((0,self.anomaly_buffer[0][1].shape[0]))
                 for idd, value in self.anomaly_buffer:
                     new = np.vstack((new, value))
                 no = new.shape[0]
@@ -70,7 +71,7 @@ class Detector():
             self.anomaly_buffer_cleanup(ind)
             return False
 
-    def new_cluster_detection(self, c=2):
+    def new_cluster_detection(self):
         '''
         Compare the centroid of state tracker with current cluster to determine if a new cluster emerge
         :return: Boolean
@@ -81,7 +82,7 @@ class Detector():
         T1 = ST_eigenvalues[np.where(ST_eigenvalues == np.max(ST_eigenvalues))][0]
         T2 = C_eigenvalues[np.where(C_eigenvalues == np.max(C_eigenvalues))][0]
         # equation 4.9
-        if la.norm(self.StateTracker.mk - self.current_cluster.centroid) >= c * np.sqrt(max(T1, T2)):
+        if la.norm(self.StateTracker.mk - self.current_cluster.centroid) >= self.c * np.sqrt(max(T1, T2)):
             return True
         return False
 
