@@ -35,6 +35,8 @@ class Detector():
         self.StreamedList = []
         self.DistributionNo = len(self.DistributionPool)
         self.model = None
+        self.EmbeddedArrays = None
+        self.potential_cp = None
 
         self.score = [] # for result evaluation
 
@@ -50,24 +52,29 @@ class Detector():
 
     def update_memory(self):
         if len(self.MemoryList) != 0:
-            self.StreamedList = [np.array(x) for x in self.AnomalyBuffer]
-        if not self.already_mem_update:
+            new = np.empty((0, self.StreamedList[0][2].shape[1], self.StreamedList[0][2].shape[2]))
+            for idd, _, value in self.StreamedList:
+                new = np.vstack((new, value))
+            self.StreamedList = new
+            candidates = np.concatenate((self.StreamedList, self.MemoryList), axis=0)
+        else:
             candidates = self.StreamedList + self.MemoryList
-            if len(candidates) <= self.memory_size:
-                self.MemoryList = candidates
-                self.seen = len(candidates)
-                logger.warning("Candidates < Memory size")
-            else:
-                self.reservoir_sampling(self.StreamedList)
+        if len(candidates) <= self.memory_size:
+            self.MemoryList = candidates
+            self.seen = len(candidates)
+            logger.warning("Candidates < Memory size")
+        else:
+            self.reservoir_sampling(self.StreamedList)
 
-            assert len(self.MemoryList) <= self.memory_size
-            logger.info("Memory statistic")
-            self.already_mem_update = True
+        assert len(self.MemoryList) <= self.memory_size
+        logger.info("Memory statistic")
 
     def initialisation(self, inputs):
         _, _, embedded_vector = self.FeatureExtracter.encoder(inputs)
         no = embedded_vector.shape[0]
         embedded_vector = np.array(embedded_vector)
+        self.EmbeddedArrays = embedded_vector
+        embedded_vector = embedded_vector / np.linalg.norm(embedded_vector, axis=0)
         centroid = np.mean(embedded_vector, axis=0)
         inv_cov = np.array(1/np.cov(embedded_vector.T))
         distribution = EllipsoidalCluster(centroid=centroid, inv_cov=inv_cov, no_of_member=no,
@@ -82,9 +89,11 @@ class Detector():
     def predict(self, new_member, ind):
         _, _, embedded_vector = self.FeatureExtracter.encoder(new_member)
         embedded_vector = np.array(embedded_vector)
+        self.EmbeddedArrays = np.concatenate((self.EmbeddedArrays, embedded_vector))
+        embedded_vector = embedded_vector/np.linalg.norm(self.EmbeddedArrays, axis=0)
 
         if self.determine_membership(embedded_vector, ind=ind):
-            self.AnomalyBuffer.append((ind, embedded_vector))
+            self.AnomalyBuffer.append((ind, embedded_vector, new_member))
         self.StateTracker.update_cov(embedded_vector)
         self.StateTracker.update_centroid(embedded_vector)
 
@@ -98,8 +107,8 @@ class Detector():
         if len(self.AnomalyBuffer) >= self.p:
             if self.new_cluster_detection():
                 # an emerging cluster should be formed
-                new = np.empty((0,self.AnomalyBuffer[0][1].shape[0]))
-                for idd, value in self.AnomalyBuffer:
+                new = np.empty((0, self.AnomalyBuffer[0][1].shape[0]))
+                for idd, value, _ in self.AnomalyBuffer:
                     new = np.vstack((new, value))
                 no = new.shape[0]
                 centroid = np.mean(new, axis=0)
@@ -134,7 +143,7 @@ class Detector():
         return False
 
     def anomaly_buffer_cleanup(self, ind):
-        buffer_copy = [(idd, value) for idd, value in self.AnomalyBuffer if ind - idd < self.stabilisation_period]
+        buffer_copy = [(idd, value, _) for idd, value, _ in self.AnomalyBuffer if ind - idd < self.stabilisation_period]
         self.AnomalyBuffer = buffer_copy
 
     def determine_membership(self, new_member, ind):

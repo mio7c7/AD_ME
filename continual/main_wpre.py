@@ -16,11 +16,11 @@ from ssa.btgym_ssa import SSA
 parser = argparse.ArgumentParser(description='Mstatistics evaluation on bottom 0.2 data')
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
-parser.add_argument('--bs', type=int, default=24, help='buffer size for ssa')
+parser.add_argument('--bs', type=int, default=10, help='buffer size for ssa')
 parser.add_argument('--forgetting_factor', type=float, default=0.9, help='between 0.9 and 1')
 parser.add_argument('--stabilisation_period', type=int, default=30, help='number of reference blocks')
 parser.add_argument('--p', type=float, default=10, help='threshold')
-parser.add_argument('--cs', type=float, default=1.5, help='c-separation')
+parser.add_argument('--cs', type=float, default=0.5, help='c-separation')
 parser.add_argument('--memory_size', type=int, default=1000, help='maximum memory size')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
 parser.add_argument('--outfile', type=str, default='firstchannel', help='name of file to save results')
@@ -86,13 +86,13 @@ if __name__ == '__main__':
 
         # initialisation for feature extraction module
         reconstructeds = sliding_window(reconstructeds, args.bs)
-        feature_extracter = VAE(args.bs, 1, 4, 'elu', 1, 0.01)
-        es = EarlyStopping(patience=5, verbose=1, min_delta=0.00001, monitor='val_loss', mode='auto',
+        feature_extracter = VAE(args.bs, 1, 4, 'elu', 1, 1)
+        es = EarlyStopping(patience=10, verbose=1, min_delta=0.00001, monitor='val_loss', mode='auto',
                            restore_best_weights=True)
-        optimis = RMSprop(learning_rate=0.001, momentum=0.9)
+        optimis = RMSprop(learning_rate=0.01, momentum=0.9)
         feature_extracter.compile(loss=None, optimizer=optimis)
-        feature_extracter.fit(reconstructeds, batch_size=16, epochs=50, validation_split=0.2, shuffle=True, callbacks=[es])
-        feature_extracter.save_weights('experiment_log/' + args.outfile)
+        feature_extracter.fit(reconstructeds, batch_size=8, epochs=50, validation_split=0.2, shuffle=True, callbacks=[es])
+        # feature_extracter.save_weights('experiment_log/' + args.outfile)
 
         preds = []
         outliers = []
@@ -102,6 +102,7 @@ if __name__ == '__main__':
         detector.FeatureExtracter = feature_extracter
         detector.initialisation(reconstructeds)
         arrays = []
+        filtered = []
 
         while ctr < len(test_var_dl):
             new = test_var_dl[ctr:ctr + step]
@@ -113,7 +114,6 @@ if __name__ == '__main__':
             residuals = np.concatenate([residuals, residual])
             arrays.append(reconstructed)
 
-            filtered = []
             for k in range(len(new)):
                 delta = residual[k] - resmean
                 resmean += delta / (ctr + k)
@@ -144,7 +144,6 @@ if __name__ == '__main__':
             elif len(test_var_dl) - ctr <= 2*args.bs:
                 ctr += args.bs
                 step = len(test_var_dl) - ctr
-                print(step)
             else:
                 ctr += args.bs
 
@@ -160,7 +159,7 @@ if __name__ == '__main__':
         for cp in preds:
             ax[1].axvline(x=ts[cp], color='g', alpha=0.6)
 
-        # ax[2].plot(ts, arrays)
+        ax[2].plot(ts, detector.EmbeddedArrays[len(reconstructeds)-args.bs+1:])
         # plt.show()
         plt.savefig(name + '.png')
         no_CPs += len(cps)
