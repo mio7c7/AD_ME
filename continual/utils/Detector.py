@@ -1,11 +1,12 @@
 from .Cluster import EllipsoidalCluster
 from .StateTracker import StateTracker
-from .distance import MahalanobisDistance
+# from .distance import MahalanobisDistance, mahalanobis
 from scipy.stats.distributions import chi2
 import numpy as np
 import numpy.linalg as la
 import logging
 import pandas as pd
+from scipy.spatial.distance import mahalanobis
 logger = logging.getLogger()
 
 class Detector():
@@ -13,7 +14,7 @@ class Detector():
     https://github.com/mchenaghlou/OnCAD-PAKDD-2017/blob/1b91d2313cb4eee55ef4423d2731aabb3de2f50b/2.OnCAD/OnCAD.m
     '''
 
-    def __init__(self, forgetting_factor, stabilisation_period, p, c, memory_size):
+    def __init__(self, forgetting_factor, stabilisation_period, p, c, memory_size, train_no):
         self.forgetting_factor = forgetting_factor
         self.n_eff = 3 / (1 - self.forgetting_factor)
         self.normal_boundary = 0.99
@@ -37,6 +38,7 @@ class Detector():
         self.model = None
         self.EmbeddedArrays = None
         self.potential_cp = None
+        self.train_no = train_no
 
         self.score = [] # for result evaluation
 
@@ -74,7 +76,7 @@ class Detector():
         no = embedded_vector.shape[0]
         embedded_vector = np.array(embedded_vector)
         self.EmbeddedArrays = embedded_vector
-        embedded_vector = embedded_vector / np.linalg.norm(embedded_vector, axis=0)
+        embedded_vector = (embedded_vector - np.mean(embedded_vector, axis=0))/ np.linalg.norm(embedded_vector, axis=0)
         centroid = np.mean(embedded_vector, axis=0)
         inv_cov = np.array(1/np.cov(embedded_vector.T))
         distribution = EllipsoidalCluster(centroid=centroid, inv_cov=inv_cov, no_of_member=no,
@@ -82,7 +84,7 @@ class Detector():
         self.DistributionPool.append(distribution)
         self.CurrentDistribution = distribution
         self.StateTracker = StateTracker(mk=centroid, inv_cov=inv_cov,
-                                         last_update=no, forgetting_factor=self.forgetting_factor)
+                                         last_update=0, forgetting_factor=self.forgetting_factor)
         self.StreamedList = [np.array(x) for x in inputs.tolist()]
         self.update_memory()
 
@@ -90,7 +92,7 @@ class Detector():
         _, _, embedded_vector = self.FeatureExtracter.encoder(new_member)
         embedded_vector = np.array(embedded_vector)
         self.EmbeddedArrays = np.concatenate((self.EmbeddedArrays, embedded_vector))
-        embedded_vector = embedded_vector/np.linalg.norm(self.EmbeddedArrays, axis=0)
+        embedded_vector = (embedded_vector - np.mean(self.EmbeddedArrays, axis=0))/np.linalg.norm(self.EmbeddedArrays, axis=0)
 
         if self.determine_membership(embedded_vector, ind=ind):
             self.AnomalyBuffer.append((ind, embedded_vector, new_member))
@@ -107,7 +109,7 @@ class Detector():
         if len(self.AnomalyBuffer) >= self.p:
             if self.new_cluster_detection():
                 # an emerging cluster should be formed
-                new = np.empty((0, self.AnomalyBuffer[0][1].shape[0]))
+                new = np.empty((0, self.AnomalyBuffer[0][1].shape[1]))
                 for idd, value, _ in self.AnomalyBuffer:
                     new = np.vstack((new, value))
                 no = new.shape[0]
@@ -119,10 +121,10 @@ class Detector():
                 self.CurrentDistribution = distribution
                 self.StreamedList = self.AnomalyBuffer
                 self.AnomalyBuffer = []
-
                 self.update_memory()
-
                 return True
+            else:
+                self.anomaly_buffer_cleanup(ind)
         else:
             self.anomaly_buffer_cleanup(ind)
             return False
@@ -133,8 +135,11 @@ class Detector():
         :return: Boolean
         '''
         # p = len(self.AnomalyBuffer)
-        ST_eigenvalues, _ = la.eig(np.reshape(1/self.StateTracker.inv_cov, (1,1)))
-        C_eigenvalues, _ = la.eig(np.reshape(1/self.CurrentDistribution.inv_cov, (1,1)))
+        try:
+            ST_eigenvalues, _ = la.eig(1/self.StateTracker.inv_cov)
+        except np.linalg.LinAlgError:
+            ST_eigenvalues, _ = la.eig(1 / (self.StateTracker.inv_cov + 1e+6 * (1 - np.eye(self.StateTracker.inv_cov.shape[0]))))
+        C_eigenvalues, _ = la.eig(1/self.CurrentDistribution.inv_cov)
         T1 = ST_eigenvalues[np.where(ST_eigenvalues == np.max(ST_eigenvalues))][0]
         T2 = C_eigenvalues[np.where(C_eigenvalues == np.max(C_eigenvalues))][0]
         # equation 4.9
@@ -158,7 +163,7 @@ class Detector():
         anomalies_label = []
         min_dist = 100000000000
         for cluster in self.DistributionPool:
-            distance = MahalanobisDistance(new_member, cluster.inv_cov, cluster.centroid)
+            distance = mahalanobis(new_member, cluster.centroid, cluster.inv_cov) ** 2
             if distance < min_dist:
                 min_dist = distance
             if distance < chi2.ppf(self.normal_boundary, cluster.dim):  # normal data points in the cluster
@@ -186,7 +191,7 @@ class Detector():
             cluster.update_centroid(new_member, weight)
             cluster.update_invcov(new_member, weight)
             cluster.update_setting(weight)
-            cluster.last_update = ind
+            cluster.last_update = ind + self.train_no
             cluster.no_of_member += 1
 
             if cluster != self.CurrentDistribution:

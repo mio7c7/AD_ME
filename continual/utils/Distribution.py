@@ -1,4 +1,6 @@
 from scipy.spatial import distance
+import numpy as np
+from .distance import mahalanobis, MahalanobisDistance
 
 class Distribution():
     def __init__(self, centroid, inv_cov, no_of_member, dim, last_update, alpha, beta):
@@ -36,9 +38,9 @@ class Distribution():
         delta_denom = self.beta * weight * (betaplus1 + weight - 2)
         delta = delta_enum / delta_denom
 
-        enumerator = self.inv_cov * (new_member - self.centroid) * (new_member - self.centroid) * self.inv_cov
+        enumerator = np.dot(np.dot(np.dot(self.inv_cov, ((new_member - self.centroid))), ((new_member - self.centroid)).T), self.inv_cov)
         # denominator = delta + (new_member - self.centroid) * self.inv_cov * (new_member - self.centroid)
-        denominator = delta + distance.mahalanobis(new_member, self.centroid, self.inv_cov) ** 2
+        denominator = delta + MahalanobisDistance(new_member, self.centroid, self.inv_cov)
         new_sn_1 = khiK * (self.inv_cov - enumerator / denominator)
         self.inv_cov = new_sn_1
 

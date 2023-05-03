@@ -19,8 +19,8 @@ parser.add_argument('--ssa_window', type=int, default=5, help='n_components for 
 parser.add_argument('--bs', type=int, default=10, help='buffer size for ssa')
 parser.add_argument('--forgetting_factor', type=float, default=0.9, help='between 0.9 and 1')
 parser.add_argument('--stabilisation_period', type=int, default=30, help='number of reference blocks')
-parser.add_argument('--p', type=float, default=10, help='threshold')
-parser.add_argument('--cs', type=float, default=0.5, help='c-separation')
+parser.add_argument('--p', type=float, default=20, help='threshold')
+parser.add_argument('--cs', type=float, default=1, help='c-separation')
 parser.add_argument('--memory_size', type=int, default=1000, help='maximum memory size')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
 parser.add_argument('--outfile', type=str, default='firstchannel', help='name of file to save results')
@@ -86,7 +86,7 @@ if __name__ == '__main__':
 
         # initialisation for feature extraction module
         reconstructeds = sliding_window(reconstructeds, args.bs)
-        feature_extracter = VAE(args.bs, 1, 4, 'elu', 1, 1)
+        feature_extracter = VAE(args.bs, 1, 4, 'elu', 2, 1)
         es = EarlyStopping(patience=10, verbose=1, min_delta=0.00001, monitor='val_loss', mode='auto',
                            restore_best_weights=True)
         optimis = RMSprop(learning_rate=0.01, momentum=0.9)
@@ -98,7 +98,8 @@ if __name__ == '__main__':
         outliers = []
         ctr = 0
         step = args.bs
-        detector = Detector(forgetting_factor=forgetting_factor, stabilisation_period=args.stabilisation_period, p=p, c=c, memory_size=args.memory_size)
+        detector = Detector(forgetting_factor=forgetting_factor, stabilisation_period=args.stabilisation_period, p=p,
+                            c=c, memory_size=args.memory_size, train_no=len(train_dl_2gal))
         detector.FeatureExtracter = feature_extracter
         detector.initialisation(reconstructeds)
         arrays = []
@@ -116,10 +117,10 @@ if __name__ == '__main__':
 
             for k in range(len(new)):
                 delta = residual[k] - resmean
-                resmean += delta / (ctr + k)
+                resmean += delta / (ctr + k + len(train_dl_2gal))
                 M2 += delta * (residual[k] - resmean)
 
-                stdev = math.sqrt(M2 / (ctr + k - 1))
+                stdev = math.sqrt(M2 / (ctr + k - 1 + len(train_dl_2gal)))
                 threshold_upper = resmean + 2 * stdev
                 threshold_lower = resmean - 2 * stdev
 
@@ -134,8 +135,8 @@ if __name__ == '__main__':
                     arr = np.array(filtered[-args.bs:])
                     arr = arr.reshape((1, len(arr), 1))
                     if detector.predict(arr, ctr + k):
-                        preds.append(ctr + step)
-                        feature_extracter.fit(detector.MemoryList, batch_size=16, epochs=20, validation_split=0.2,
+                        preds.append(ctr + k)
+                        feature_extracter.fit(detector.MemoryList, batch_size=8, epochs=50, validation_split=0.2,
                                               shuffle=True, callbacks=[es])
                         detector.FeatureExtracter = feature_extracter
 
