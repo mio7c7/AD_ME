@@ -15,6 +15,7 @@ parser.add_argument('--ssa_window', type=int, default=5, help='n_components for 
 parser.add_argument('--bs', type=int, default=24, help='buffer size for ssa')
 parser.add_argument('--forgetting_factor', type=float, default=0.9, help='between 0.9 and 1')
 parser.add_argument('--stabilisation_period', type=int, default=30, help='number of reference blocks')
+parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
 parser.add_argument('--p', type=float, default=10, help='threshold')
 parser.add_argument('--cs', type=float, default=1.5, help='c-separation')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
@@ -74,7 +75,7 @@ if __name__ == '__main__':
         reconstructeds = X_pred[1,:]
         residuals = X - reconstructeds
         resmean = residuals.mean()
-        M2 = ((residuals - resmean) ** 2).sum() * (len(residuals) - 1) * residuals.var()
+        M2 = ((residuals - resmean) ** 2).sum()
 
         detector = Detector(forgetting_factor=forgetting_factor, stabilisation_period=stabilisation_period,
                             p=p, c=c)
@@ -102,8 +103,8 @@ if __name__ == '__main__':
                 M2 += delta * (residual[k] - resmean)
 
                 stdev = math.sqrt(M2 / (ctr + k - 1))
-                threshold_upper = resmean + 2 * stdev
-                threshold_lower = resmean - 2 * stdev
+                threshold_upper = resmean + args.out_threshold * stdev
+                threshold_lower = resmean - args.out_threshold * stdev
 
                 if residual[k] > threshold_upper or residual[k] < threshold_lower:
                     outliers.append(ctr + k)
@@ -121,7 +122,6 @@ if __name__ == '__main__':
             else:
                 ctr += args.bs
 
-        print(preds)
         fig = plt.figure()
         fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
         ax[0].plot(ts, test_var_dl)
