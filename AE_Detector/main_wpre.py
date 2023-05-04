@@ -69,9 +69,6 @@ def sliding_window(elements, window_size):
 if __name__ == '__main__':
     folder = args.data
     fixed_threshold = 1.5
-    forgetting_factor = 0.9
-    stabilisation_period = 20
-    p = 10
 
     error_margin = 604800 # 7 days
     no_CPs = 0
@@ -120,7 +117,6 @@ if __name__ == '__main__':
         outliers = []
         es = EarlyStopping(patience=5, verbose=1, min_delta=0.001, monitor='val_loss', mode='auto',
                            restore_best_weights=True)
-
         # 建立模型
         vae = Model(x, x_decoded_mean)
         # xent_loss是重构loss，kl_loss是KL loss
@@ -177,7 +173,7 @@ if __name__ == '__main__':
                 elif len(List_st) > args.buffer_ts:
                     window = np.reshape(reconstructeds[ctr-9:ctr+1],(1,10))
                     pred = vae.predict(window)
-                    score = np.mean(np.abs(vae.predict(window) - window))
+                    score = np.mean(np.abs(pred - window))
                     scores[ctr] = score
                     if score > threshold:
                         preds.append(ctr)

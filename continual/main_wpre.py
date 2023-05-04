@@ -23,7 +23,7 @@ parser.add_argument('--p', type=float, default=20, help='threshold')
 parser.add_argument('--cs', type=float, default=1, help='c-separation')
 parser.add_argument('--memory_size', type=int, default=1000, help='maximum memory size')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
-parser.add_argument('--outfile', type=str, default='firstchannel', help='name of file to save results')
+parser.add_argument('--outfile', type=str, default='', help='name of file to save results')
 args = parser.parse_args()
 
 def preprocess(data, fixed_t):
@@ -161,7 +161,6 @@ if __name__ == '__main__':
             ax[1].axvline(x=ts[cp], color='g', alpha=0.6)
 
         ax[2].plot(ts, detector.EmbeddedArrays[len(reconstructeds)-args.bs+1:])
-        # plt.show()
         plt.savefig(name + '.png')
         no_CPs += len(cps)
         no_preds += len(preds)
