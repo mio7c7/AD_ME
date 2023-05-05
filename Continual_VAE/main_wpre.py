@@ -142,7 +142,7 @@ if __name__ == '__main__':
                 M2 += delta * (residual[k] - resmean)
                 stdev = math.sqrt(M2 / (ctr + k + len(train_dl_2gal) - 1))
                 threshold_upper = resmean + 3 * stdev
-                threshold_lower = resmean  * stdev
+                threshold_lower = resmean + 3 * stdev
 
                 if residual[k] > threshold_upper or residual[k] < threshold_lower:
                     outliers.append(ctr + k)

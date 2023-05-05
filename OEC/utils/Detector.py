@@ -4,7 +4,6 @@ from .distance import MahalanobisDistance
 from scipy.stats.distributions import chi2
 import numpy as np
 import numpy.linalg as la
-from .distance import mahalanobis
 
 class Detector():
     '''
