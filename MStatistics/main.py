@@ -2,6 +2,7 @@ from MS import Kernel
 import numpy as np
 import glob
 import sys
+import matplotlib.pyplot as plt
 import argparse
 # from Evaluation_metrics import recall, False_Alarm_Rate, precision, F1_score, detection_delay
 sys.path.append('../evaluation/')

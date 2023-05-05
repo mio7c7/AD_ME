@@ -84,7 +84,7 @@ class Kernel():
         residual = len(reference_pool) % B
         no_blocks = len(reference_pool) // B
         copy = reference_pool[residual:]
-        copy = copy.reshape((no_blocks, B, copy.shape[1]))
+        copy = copy.reshape((no_blocks, B, 1))
         index = np.arange(no_blocks) + 1
         prob = index / np.sum(index)
         selected = np.random.choice(index, N, p=prob, replace=False)
@@ -94,6 +94,13 @@ class Kernel():
 
     def find_mmd_u_sq(self, X, Y):
         return compute_mmd(X, Y)
+
+    def predict(self, tmp, matrix_X):
+        mmd_u_sq = np.zeros(self.N)
+        for i in range(self.N):
+            mmd_u_sq[i] = self.find_mmd_u_sq(matrix_X[i, :], tmp)
+        stat = math.sqrt(self.Bo * (self.Bo - 1)) * np.mean(mmd_u_sq)
+        return stat
 
     def change_detection(self, input):  # Y the whole input
         length = len(input)
