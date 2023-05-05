@@ -141,8 +141,8 @@ if __name__ == '__main__':
                 resmean += delta / (ctr + k + len(train_dl_2gal))
                 M2 += delta * (residual[k] - resmean)
                 stdev = math.sqrt(M2 / (ctr + k + len(train_dl_2gal) - 1))
-                threshold_upper = resmean + 3 * stdev
-                threshold_lower = resmean  * stdev
+                threshold_upper = resmean + 2 * stdev
+                threshold_lower = resmean + 2 * stdev
 
                 if residual[k] > threshold_upper or residual[k] < threshold_lower:
                     outliers.append(ctr + k)
@@ -162,8 +162,8 @@ if __name__ == '__main__':
                     memory, seen = reservoir_sampling(memory, sample, class_no, seen)
                     noise = np.random.normal(0, args.g_noise, size=(memory.shape))
                     noisy_Data = memory + noise
-                    feature_extracter = VAE(args.ws, 1, 4, 'elu', args.latent_dim, 0.01)
-                    feature_extracter.compile(loss=None, optimizer=optimis)
+                    # feature_extracter = VAE(args.ws, 1, 4, 'elu', args.latent_dim, 0.01)
+                    # feature_extracter.compile(loss=None, optimizer=optimis)
                     feature_extracter.fit(noisy_Data, batch_size=8, epochs=args.epoch, validation_split=0.2,
                                           shuffle=True, callbacks=[es])
                     _, _, _, pred = feature_extracter.predict(noisy_Data)

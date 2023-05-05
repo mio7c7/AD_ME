@@ -25,7 +25,7 @@ parser.add_argument('--collection_period', type=int, default=200, help='preproce
 parser.add_argument('--memory_size', type=int, default=2000, help='preprocess outlier filter')
 parser.add_argument('--latent_dim', type=int, default=1, help='threshold')
 parser.add_argument('--batch_size', type=int, default=32, help='threshold')
-parser.add_argument('--epoch', type=int, default=50, help='epoch')
+parser.add_argument('--epoch', type=int, default=100, help='epoch')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
 parser.add_argument('--threshold', type=float, default=7, help='threshold')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
@@ -103,12 +103,11 @@ if __name__ == '__main__':
         reconstructeds = sliding_window(X, args.ws)
         reconstructeds = np.expand_dims(reconstructeds, axis=-1)
 
-        feature_extracter = VAE(args.ws, 1, 4, 'elu', args.latent_dim, 0.01)
-        es = EarlyStopping(patience=9, verbose=1, min_delta=0.00001, monitor='val_loss', mode='auto',
-                           restore_best_weights=True)
-        optimis = RMSprop(learning_rate=0.001, momentum=0.9)
+        feature_extracter = VAE(args.ws, 1, 4, 'elu', args.latent_dim, 1)
+        es = EarlyStopping(patience=5, verbose=1, min_delta=0.00001, monitor='val_loss', mode='auto')
+        optimis = Adam(learning_rate=0.001)
         feature_extracter.compile(loss=None, optimizer=optimis)
-        feature_extracter.fit(reconstructeds, batch_size=32, epochs=args.epoch, validation_split=0.2, shuffle=True, callbacks=[es])
+        feature_extracter.fit(reconstructeds, batch_size=args.batch_size, epochs=args.epoch, validation_split=0.2, shuffle=True, callbacks=[es])
         # feature_extracter.save_weights('experiment_log/' + args.outfile)
         z_mean, z_log_sigma, z, pred = feature_extracter.predict(reconstructeds)
         MSE = [mean_squared_error(z_mean[i], z_mean[i + args.ws]) for i in range(len(reconstructeds) - args.ws)]
@@ -160,9 +159,9 @@ if __name__ == '__main__':
                 elif collection_period == args.collection_period:
                     class_no += 1
                     memory, seen = reservoir_sampling(memory, sample, class_no, seen)
-                    feature_extracter = VAE(args.ws, 1, 4, 'elu', args.latent_dim, 0.01)
-                    feature_extracter.compile(loss=None, optimizer=optimis)
-                    feature_extracter.fit(memory, batch_size=16, epochs=args.epoch, validation_split=0.2,
+                    # feature_extracter = VAE(args.ws, 1, 4, 'elu', args.latent_dim, 0.01)
+                    # feature_extracter.compile(loss=None, optimizer=optimis)
+                    feature_extracter.fit(memory, batch_size=args.batch_size, epochs=args.epoch, validation_split=0.2,
                                           shuffle=True, callbacks=[es])
                     z_mean, z_log_sigma, z, pred = feature_extracter.predict(memory)
                     MSE = [mean_squared_error(z_mean[i], z_mean[i + args.ws]) for i in range(len(memory) - args.ws)]
