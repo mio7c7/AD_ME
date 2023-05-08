@@ -3,16 +3,14 @@ import numpy as np
 import glob
 import sys
 import argparse
-sys.path.append('./')
-from evaluation import Evaluation_metrics
-from ssa.btgym_ssa import SSA
+sys.path.append('./evaluation/')
+import Evaluation_metrics
 
 parser = argparse.ArgumentParser(description='Mstatistics evaluation on bottom 0.2 data')
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
 parser.add_argument('--forgetting_factor', type=float, default=0.9, help='between 0.9 and 1')
 parser.add_argument('--stabilisation_period', type=int, default=30, help='number of reference blocks')
 parser.add_argument('--p', type=float, default=10, help='threshold')
-parser.add_argument('--cs', type=float, default=2, help='c-separation')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
 parser.add_argument('--outfile', type=str, default='15IQRMED11WND100', help='name of file to save results')
 args = parser.parse_args()
@@ -63,7 +61,7 @@ if __name__ == '__main__':
         # initialsets = multi_test[:stabilisation_period]
         initialsets = test_var_dl[:stabilisation_period]
         detector = Detector(forgetting_factor=forgetting_factor, stabilisation_period=stabilisation_period,
-                            p=p, c=args.cs)
+                            p=p)
         detector.initialisation(initialsets)
         preds = []
 
