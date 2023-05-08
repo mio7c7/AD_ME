@@ -3,7 +3,7 @@ import sys
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 from tensorflow.keras.layers import Input, Dense, Lambda
 from utils.Model import VAE
 from tensorflow.keras.callbacks import EarlyStopping
@@ -23,15 +23,15 @@ parser.add_argument('--bs', type=int, default=48, help='buffer size for ssa')
 parser.add_argument('--ws', type=int, default=40, help='window size')
 parser.add_argument('--collection_period', type=int, default=200, help='preprocess outlier filter')
 parser.add_argument('--memory_size', type=int, default=2000, help='preprocess outlier filter')
-parser.add_argument('--dense_dim', type=int, default=4, help='no of neuron in dense')
+parser.add_argument('--dense_dim', type=int, default=2, help='no of neuron in dense')
 parser.add_argument('--kl_weight', type=float, default=1, help='kl_weight')
 parser.add_argument('--latent_dim', type=int, default=1, help='latent_dim')
 parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
 parser.add_argument('--epoch', type=int, default=400, help='epoch')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
-parser.add_argument('--threshold', type=float, default=6, help='threshold')
+parser.add_argument('--threshold', type=float, default=4, help='threshold')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
-parser.add_argument('--outfile', type=str, default='new', help='name of file to save results')
+parser.add_argument('--outfile', type=str, default='main1_1', help='name of file to save results')
 
 args = parser.parse_args()
 def preprocess(data, fixed_t):
@@ -107,13 +107,12 @@ if __name__ == '__main__':
 
         feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight)
         es = EarlyStopping(patience=7, verbose=1, min_delta=0.0001, monitor='val_loss', mode='auto')
-        # optimis = Adam(learning_rate=0.001)
         optimis = RMSprop(learning_rate=0.001)
         feature_extracter.compile(loss=None, optimizer=optimis)
         feature_extracter.fit(reconstructeds, batch_size=args.batch_size, epochs=args.epoch, validation_split=0.3, shuffle=True, callbacks=[es])
         # feature_extracter.save_weights('experiment_log/' + args.outfile)
         z_mean, z_log_sigma, z, pred = feature_extracter.predict(reconstructeds)
-        MSE = [mean_squared_error(z_mean[i], z_mean[i + args.ws]) for i in range(len(reconstructeds) - args.ws)]
+        MSE = [mean_absolute_error(z[i], z[i + args.ws]) for i in range(len(reconstructeds) - args.ws)]
         threshold = np.mean(MSE) + args.threshold*np.std(MSE)
 
         ctr = 0
@@ -162,12 +161,12 @@ if __name__ == '__main__':
                 elif collection_period == args.collection_period:
                     class_no += 1
                     memory, seen = reservoir_sampling(memory, sample, class_no, seen)
-                    # feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight)
+                    # feature_extracter = VAE(args.ws, 1, 4, 'elu', args.latent_dim, 0.01)
                     # feature_extracter.compile(loss=None, optimizer=optimis)
                     feature_extracter.fit(memory, batch_size=args.batch_size, epochs=args.epoch, validation_split=0.2,
                                           shuffle=True, callbacks=[es])
                     z_mean, z_log_sigma, z, pred = feature_extracter.predict(memory)
-                    MSE = [mean_squared_error(z_mean[i], z_mean[i + args.ws]) for i in range(len(memory) - args.ws)]
+                    MSE = [mean_absolute_error(z[i], z[i + args.ws]) for i in range(len(memory) - args.ws)]
                     threshold = np.mean(MSE) + args.threshold * np.std(MSE)
                     sample = np.empty((0, memory.shape[1], memory.shape[2]))
                     collection_period = 1000000000
@@ -180,10 +179,8 @@ if __name__ == '__main__':
                     window = np.array(filtered[-args.ws * 2 - step + 1:])
                 window = sliding_window(window, args.ws)
                 z_mean, z_log_sigma, z, pred = feature_extracter.predict(window)
-                score = [mean_squared_error(z_mean[i], z_mean[i + args.ws]) for i in range(len(window) - args.ws)]
+                score = [mean_absolute_error(z_mean[i], z_mean[i + args.ws]) for i in range(len(window) - args.ws)]
                 scores = scores + list(score)
-                MSE = MSE + score
-                threshold = np.mean(MSE) + args.threshold * np.std(MSE)
                 for m in range(len(score)):
                     if score[m] > threshold:
                         preds.append(ctr + m)

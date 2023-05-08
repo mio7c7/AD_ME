@@ -30,8 +30,9 @@ parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
 parser.add_argument('--epoch', type=int, default=400, help='epoch')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
 parser.add_argument('--threshold', type=float, default=6, help='threshold')
+parser.add_argument('--quantile', type=float, default=0.95, help='quantile')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
-parser.add_argument('--outfile', type=str, default='new', help='name of file to save results')
+parser.add_argument('--outfile', type=str, default='reconstructed', help='name of file to save results')
 
 args = parser.parse_args()
 def preprocess(data, fixed_t):
@@ -102,11 +103,11 @@ if __name__ == '__main__':
         M2 = ((residuals - resmean) ** 2).sum()
 
         # initialisation for feature extraction module
-        reconstructeds = sliding_window(X, args.ws)
+        reconstructeds = sliding_window(reconstructeds, args.ws)
         reconstructeds = np.expand_dims(reconstructeds, axis=-1)
 
         feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight)
-        es = EarlyStopping(patience=7, verbose=1, min_delta=0.0001, monitor='val_loss', mode='auto')
+        es = EarlyStopping(patience=7, verbose=1, min_delta=0.00001, monitor='val_loss', mode='auto')
         # optimis = Adam(learning_rate=0.001)
         optimis = RMSprop(learning_rate=0.001)
         feature_extracter.compile(loss=None, optimizer=optimis)
@@ -114,7 +115,8 @@ if __name__ == '__main__':
         # feature_extracter.save_weights('experiment_log/' + args.outfile)
         z_mean, z_log_sigma, z, pred = feature_extracter.predict(reconstructeds)
         MSE = [mean_squared_error(z_mean[i], z_mean[i + args.ws]) for i in range(len(reconstructeds) - args.ws)]
-        threshold = np.mean(MSE) + args.threshold*np.std(MSE)
+        mse_quantile = np.quantile(MSE, args.quantile)
+        threshold = args.threshold * mse_quantile
 
         ctr = 0
         step = args.bs
@@ -148,10 +150,10 @@ if __name__ == '__main__':
 
                 if residual[k] > threshold_upper or residual[k] < threshold_lower:
                     outliers.append(ctr + k)
-                    filtered.append(np.mean(new))
+                    filtered.append(np.mean(reconstructed))
                     continue
                 else:
-                    filtered.append(new[k])
+                    filtered.append(reconstructed[k])
 
                 if collection_period < args.collection_period:
                     window = np.array(filtered[-args.ws:])
@@ -168,7 +170,8 @@ if __name__ == '__main__':
                                           shuffle=True, callbacks=[es])
                     z_mean, z_log_sigma, z, pred = feature_extracter.predict(memory)
                     MSE = [mean_squared_error(z_mean[i], z_mean[i + args.ws]) for i in range(len(memory) - args.ws)]
-                    threshold = np.mean(MSE) + args.threshold * np.std(MSE)
+                    mse_quantile = np.quantile(MSE, args.quantile)
+                    threshold = args.threshold * mse_quantile
                     sample = np.empty((0, memory.shape[1], memory.shape[2]))
                     collection_period = 1000000000
 
@@ -182,14 +185,18 @@ if __name__ == '__main__':
                 z_mean, z_log_sigma, z, pred = feature_extracter.predict(window)
                 score = [mean_squared_error(z_mean[i], z_mean[i + args.ws]) for i in range(len(window) - args.ws)]
                 scores = scores + list(score)
-                MSE = MSE + score
-                threshold = np.mean(MSE) + args.threshold * np.std(MSE)
+                # MSE = MSE + score
+                # threshold = np.mean(MSE) + args.threshold * np.std(MSE)
                 for m in range(len(score)):
                     if score[m] > threshold:
                         preds.append(ctr + m)
                         sample = np.empty((0, reconstructeds.shape[1], reconstructeds.shape[2]))
                         collection_period = 0
                         break
+                    else:
+                        MSE.append(score[m])
+                        mse_quantile = np.quantile(MSE, args.quantile)
+                        threshold = args.threshold * mse_quantile
             else:
                 scores = scores + [0] * step
 

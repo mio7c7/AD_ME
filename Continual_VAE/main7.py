@@ -106,7 +106,7 @@ if __name__ == '__main__':
         reconstructeds = np.expand_dims(reconstructeds, axis=-1)
 
         feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight)
-        es = EarlyStopping(patience=7, verbose=1, min_delta=0.0001, monitor='val_loss', mode='auto')
+        es = EarlyStopping(patience=7, verbose=1, min_delta=0.00001, monitor='val_loss', mode='auto')
         # optimis = Adam(learning_rate=0.001)
         optimis = RMSprop(learning_rate=0.001)
         feature_extracter.compile(loss=None, optimizer=optimis)
@@ -182,14 +182,17 @@ if __name__ == '__main__':
                 z_mean, z_log_sigma, z, pred = feature_extracter.predict(window)
                 score = [mean_squared_error(z_mean[i], z_mean[i + args.ws]) for i in range(len(window) - args.ws)]
                 scores = scores + list(score)
-                MSE = MSE + score
-                threshold = np.mean(MSE) + args.threshold * np.std(MSE)
+                # MSE = MSE + score
+                # threshold = np.mean(MSE) + args.threshold * np.std(MSE)
                 for m in range(len(score)):
                     if score[m] > threshold:
                         preds.append(ctr + m)
                         sample = np.empty((0, reconstructeds.shape[1], reconstructeds.shape[2]))
                         collection_period = 0
                         break
+                    else:
+                        MSE.append(score[m])
+                        threshold = np.mean(MSE) + args.threshold * np.std(MSE)
             else:
                 scores = scores + [0] * step
 

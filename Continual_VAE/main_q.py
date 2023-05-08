@@ -29,9 +29,10 @@ parser.add_argument('--latent_dim', type=int, default=1, help='latent_dim')
 parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
 parser.add_argument('--epoch', type=int, default=400, help='epoch')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
-parser.add_argument('--threshold', type=float, default=6, help='threshold')
+parser.add_argument('--threshold', type=float, default=4, help='threshold')
+parser.add_argument('--quantile', type=float, default=0.95, help='quantile')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
-parser.add_argument('--outfile', type=str, default='new', help='name of file to save results')
+parser.add_argument('--outfile', type=str, default='quantile1', help='name of file to save results')
 
 args = parser.parse_args()
 def preprocess(data, fixed_t):
@@ -108,13 +109,14 @@ if __name__ == '__main__':
         feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight)
         es = EarlyStopping(patience=7, verbose=1, min_delta=0.0001, monitor='val_loss', mode='auto')
         # optimis = Adam(learning_rate=0.001)
-        optimis = RMSprop(learning_rate=0.001)
+        optimis = RMSprop(learning_rate=0.01)
         feature_extracter.compile(loss=None, optimizer=optimis)
         feature_extracter.fit(reconstructeds, batch_size=args.batch_size, epochs=args.epoch, validation_split=0.3, shuffle=True, callbacks=[es])
         # feature_extracter.save_weights('experiment_log/' + args.outfile)
         z_mean, z_log_sigma, z, pred = feature_extracter.predict(reconstructeds)
         MSE = [mean_squared_error(z_mean[i], z_mean[i + args.ws]) for i in range(len(reconstructeds) - args.ws)]
-        threshold = np.mean(MSE) + args.threshold*np.std(MSE)
+        mse_quantile = np.quantile(MSE, args.quantile)
+        threshold = args.threshold*mse_quantile
 
         ctr = 0
         step = args.bs
@@ -168,7 +170,8 @@ if __name__ == '__main__':
                                           shuffle=True, callbacks=[es])
                     z_mean, z_log_sigma, z, pred = feature_extracter.predict(memory)
                     MSE = [mean_squared_error(z_mean[i], z_mean[i + args.ws]) for i in range(len(memory) - args.ws)]
-                    threshold = np.mean(MSE) + args.threshold * np.std(MSE)
+                    mse_quantile = np.quantile(MSE, args.quantile)
+                    threshold = args.threshold * mse_quantile
                     sample = np.empty((0, memory.shape[1], memory.shape[2]))
                     collection_period = 1000000000
 
@@ -182,14 +185,18 @@ if __name__ == '__main__':
                 z_mean, z_log_sigma, z, pred = feature_extracter.predict(window)
                 score = [mean_squared_error(z_mean[i], z_mean[i + args.ws]) for i in range(len(window) - args.ws)]
                 scores = scores + list(score)
-                MSE = MSE + score
-                threshold = np.mean(MSE) + args.threshold * np.std(MSE)
+                # MSE = MSE + score
+                # threshold = np.mean(MSE) + args.threshold * np.std(MSE)
                 for m in range(len(score)):
                     if score[m] > threshold:
                         preds.append(ctr + m)
                         sample = np.empty((0, reconstructeds.shape[1], reconstructeds.shape[2]))
                         collection_period = 0
                         break
+                    else:
+                        MSE.append(score[m])
+                        mse_quantile = np.quantile(MSE, args.quantile)
+                        threshold = args.threshold * mse_quantile
             else:
                 scores = scores + [0] * step
 

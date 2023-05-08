@@ -107,7 +107,7 @@ if __name__ == '__main__':
 
                 if residual[k] > threshold_upper or residual[k] < threshold_lower:
                     outliers.append(ctr + k)
-                    filtered.append(0)
+                    filtered.append(np.mean(new))
                     continue
                 else:
                     filtered.append(new[k])
@@ -136,7 +136,7 @@ if __name__ == '__main__':
 
         # ax[2].plot(ts, multi_test[:, 1])
         # plt.show()
-        plt.savefig(name + '.png')
+        # plt.savefig(name + '.png')
         no_CPs += len(cps)
         no_preds += len(preds)
         for j in preds:

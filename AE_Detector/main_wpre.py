@@ -115,7 +115,7 @@ if __name__ == '__main__':
         step = args.bs
         scores = np.zeros(test_var_dl.shape[0])
         outliers = []
-        es = EarlyStopping(patience=5, verbose=1, min_delta=0.001, monitor='val_loss', mode='auto',
+        es = EarlyStopping(patience=5, verbose=1, min_delta=0.00001, monitor='val_loss', mode='auto',
                            restore_best_weights=True)
         # 建立模型
         vae = Model(x, x_decoded_mean)
