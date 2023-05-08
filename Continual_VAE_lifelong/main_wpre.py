@@ -231,6 +231,7 @@ if __name__ == '__main__':
             else:
                 ctr += args.bs
 
+        preds = detector.N + detector.R
         no_CPs += len(cps)
         no_preds += len(preds)
         for j in preds:
