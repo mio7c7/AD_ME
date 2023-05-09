@@ -6,6 +6,7 @@ from tensorflow.compat.v1.keras.models import *
 from tensorflow.compat.v1.keras.optimizers import *
 from tensorflow.compat.v1.keras import backend as K
 from tensorflow.compat.v1.keras.metrics import *
+from tensorflow.compat.v1.keras import regularizers
 # Class Sampling
 
 class Sampling(Layer):
@@ -30,7 +31,7 @@ class Encoder(Model):
         self.z_log_sigma = Dense(z_dim, name='z_log_var')
         self.z_sample = Sampling()
         self.flat = Flatten()
-        self.dropout = Dropout(0.2)
+        self.dropout = Dropout(0.5)
 
     def call(self, inputs):
         self.encoder_inputs = inputs
@@ -48,7 +49,7 @@ class Decoder(Layer):
         self.decoder = Dense(hid_dim, activation=activation)
         self.dec = Dense(timestep, activation='linear')
         self.reshape = Reshape((timestep, input_dim))
-        self.dropout = Dropout(0.2)
+        self.dropout = Dropout(0.5)
 
     def call(self, inputs):
         hidden =self.decoder(inputs)
