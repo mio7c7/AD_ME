@@ -28,10 +28,10 @@ parser.add_argument('--latent_dim', type=int, default=1, help='latent_dim')
 parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
 parser.add_argument('--epoch', type=int, default=400, help='epoch')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
-parser.add_argument('--threshold', type=float, default=4, help='threshold')
+parser.add_argument('--threshold', type=float, default=3, help='threshold')
 parser.add_argument('--quantile', type=float, default=0.95, help='quantile')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
-parser.add_argument('--outfile', type=str, default='reconstructed', help='name of file to save results')
+parser.add_argument('--outfile', type=str, default='main_wpre', help='name of file to save results')
 
 args = parser.parse_args()
 def preprocess(data, fixed_t):
@@ -92,7 +92,7 @@ if __name__ == '__main__':
         reconstructeds = np.expand_dims(reconstructeds, axis=-1)
 
         feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight)
-        es = EarlyStopping(patience=7, verbose=1, min_delta=0.00001, monitor='val_loss', mode='auto')
+        es = EarlyStopping(patience=7, verbose=1, min_delta=0.0001, monitor='val_loss', mode='auto')
         optimis = RMSprop(learning_rate=0.01)
         feature_extracter.compile(loss=None, optimizer=optimis)
         feature_extracter.fit(reconstructeds, batch_size=args.batch_size, epochs=args.epoch, validation_split=0.3, shuffle=True, callbacks=[es])
@@ -119,7 +119,14 @@ if __name__ == '__main__':
             updates = ssa.update(new)
             updates = ssa.transform(updates, state=ssa.get_state())[:, -step:]
             reconstructed = updates.sum(axis=0)
-            residual = new - reconstructed
+            try:
+                residual = new - reconstructed
+            except:
+                print('new', new.shape)
+                print('reconstructed', reconstructed.shape)
+                print('updates', updates.shape)
+                print('ctr', ctr, ctr + step)
+                print(len(ts))
             residuals = np.concatenate([residuals, residual])
 
             for k in range(len(new)):
@@ -184,6 +191,8 @@ if __name__ == '__main__':
                     window = np.array(filtered[-step + 1:])
                 else:
                     window = np.array(filtered[-args.ws - step + 1:])
+                if len(window) <= args.ws:
+                    break
                 window = sliding_window(window, args.ws)
                 if collection_period + len(window) < args.memory_size:
                     sample = np.concatenate((sample, window))
@@ -244,6 +253,7 @@ if __name__ == '__main__':
         if not os.path.exists(args.outfile):
             os.makedirs(args.outfile)
         scores = scores + [0]*(len(ts)-len(scores))
+        filtered = filtered + [0] * (len(ts) - len(filtered))
         fig = plt.figure()
         fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
         ax[0].plot(ts, test_var_dl)
@@ -263,13 +273,15 @@ if __name__ == '__main__':
     FAR = Evaluation_metrics.False_Alarm_Rate(no_preds, no_TPS)
     prec = Evaluation_metrics.precision(no_TPS, no_preds)
     f1score = Evaluation_metrics.F1_score(rec, prec)
+    f2score = Evaluation_metrics.F2_score(rec, prec)
     dd = Evaluation_metrics.detection_delay(delays)
     print('recall: ', rec)
     print('false alarm rate: ', FAR)
     print('precision: ', prec)
     print('F1 Score: ', f1score)
+    print('F2 Score: ', f2score)
     print('detection delay: ', dd)
 
     npz_filename = args.outfile
     np.savez(npz_filename,
-             rec=rec, FAR=FAR, prec=prec, f1score=f1score, dd=dd)
+             rec=rec, FAR=FAR, prec=prec, f1score=f1score, f2score=f2score,dd=dd)
