@@ -7,7 +7,7 @@ from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.layers import Input, Dense, Lambda
 from utils.Model import VAE
-from Detector_quantile import Detector
+from Detector import Detector
 from scipy.stats import wasserstein_distance
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.optimizers import *
@@ -31,8 +31,8 @@ parser.add_argument('--latent_dim', type=int, default=1, help='latent_dim')
 parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
 parser.add_argument('--epoch', type=int, default=400, help='epoch')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
-parser.add_argument('--threshold', type=float, default=4, help='threshold')
-parser.add_argument('--quantile', type=float, default=0.9, help='quantile')
+parser.add_argument('--threshold', type=float, default=7, help='threshold')
+parser.add_argument('--quantile', type=float, default=0.97, help='quantile')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
 parser.add_argument('--outfile', type=str, default='5_std_05', help='name of file to save results')
 
@@ -97,19 +97,19 @@ if __name__ == '__main__':
         reconstructeds = np.expand_dims(reconstructeds, axis=-1)
 
         feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight, args.dropout)
-        es = EarlyStopping(patience=7, verbose=0, min_delta=0.0001, monitor='val_loss', mode='auto')
+        es = EarlyStopping(patience=7, verbose=1, min_delta=0.0001, monitor='val_loss', mode='auto')
         optimis = RMSprop(learning_rate=0.01)
         feature_extracter.compile(loss=None, optimizer=optimis)
-        X_train, X_valid = train_test_split(reconstructeds, test_size=0.3, shuffle=True, random_state=1)
-        feature_extracter.fit(X_train, batch_size=args.batch_size, epochs=args.epoch, validation_data=(X_valid, X_valid), callbacks=[es])
+        # X_train, X_valid = train_test_split(reconstructeds, test_size=0.2, shuffle=True, random_state=1)
+        feature_extracter.fit(reconstructeds, batch_size=args.batch_size, epochs=args.epoch, validation_split=0.2, callbacks=[es])
 
         class_no = 1
-        memory = X_valid
-        if len(X_valid) < args.memory_size:
-            random_indices = np.random.choice(len(X_train), size=(args.memory_size-len(X_valid)), replace=True)
-            memory = np.concatenate((memory, X_train[random_indices]))
-        # random_indices = np.random.choice(len(reconstructeds), size=args.memory_size, replace=True)
-        # memory = reconstructeds[random_indices]
+        # memory = X_valid
+        # if len(X_valid) < args.memory_size:
+        #     random_indices = np.random.choice(len(X_train), size=(args.memory_size-len(X_valid)), replace=True)
+        #     memory = np.concatenate((memory, X_train[random_indices]))
+        random_indices = np.random.choice(len(reconstructeds), size=args.memory_size, replace=True)
+        memory = reconstructeds[random_indices]
         z_mean, z_log_sigma, z, pred = feature_extracter.predict(memory)
         detector = Detector(args.ws, feature_extracter, args)
         detector.addsample2memory(memory, z_mean, args.memory_size, class_no)
@@ -128,12 +128,12 @@ if __name__ == '__main__':
         for tt in cps:
             closest_element = ts[ts < tt].max()
             idx = np.where(ts == closest_element)[0][0]
-            gt_margin.append((ts[idx-10], tt+error_margin, tt))
+            gt_margin.append((ts[idx-10], tt+error_margin))
 
         while ctr < test_var_dl.shape[0]:
             new = test_var_dl[ctr:ctr + step]
             updates = ssa.update(new)
-            updates = ssa.transform(updates, state=ssa.get_state())[:, args.ssa_window-1:]
+            updates = ssa.transform(updates, state=ssa.get_state())[:, -step:]
             reconstructed = updates.sum(axis=0)
             residual = new - reconstructed
             residuals = np.concatenate([residuals, residual])
@@ -204,28 +204,25 @@ if __name__ == '__main__':
                 if collection_period + len(window) < args.memory_size:
                     sample = np.concatenate((sample, window))
                     collection_period += len(window)
-                else: #new
-                    sample = np.concatenate((sample, window))
+                else:
+                    temp = window[:args.memory_size-collection_period]
+                    sample = np.concatenate((sample, temp))
                     if detector.current_index == -1: # new cluster
-                        new_data = np.expand_dims(sample, axis=-1)
-                        exist_data = np.empty((0, reconstructeds.shape[1], reconstructeds.shape[2]))
+                        train = np.expand_dims(sample, axis=-1)
+                        new_data = train
                         jj = 1
                         while jj <= class_no:
-                            exist_data = np.vstack((exist_data, detector.memory[jj]['sample']))
+                            train = np.vstack((train, detector.memory[jj]['sample']))
                             jj += 1
-                        # feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight, args.dropout)
-                        # feature_extracter.compile(loss=None, optimizer=optimis)
-                        new_train, new_valid = train_test_split(new_data, test_size=0.3, shuffle=True, random_state=1)
-                        exist_train, exist_valid = train_test_split(exist_data, test_size=0.3, shuffle=True, random_state=1)
-                        train = np.concatenate((new_train, exist_train))
-                        valid = np.concatenate((new_valid, exist_valid))
-                        detector.feature_extracter.fit(train, batch_size=args.batch_size, epochs=args.epoch,
-                                              validation_data=(valid, valid),
+                        feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight, args.dropout)
+                        feature_extracter.compile(loss=None, optimizer=optimis)
+                        feature_extracter.fit(train, batch_size=args.batch_size, epochs=args.epoch,
+                                              validation_split=0.2,
                                               shuffle=True, callbacks=[es])
-                        z_mean, z_log_sigma, z, pred = detector.feature_extracter.predict(new_valid)
-                        # detector.feature_extracter = feature_extracter
+                        z_mean, z_log_sigma, z, pred = feature_extracter.predict(train)
+                        detector.feature_extracter = feature_extracter
                         class_no += 1
-                        detector.addsample2memory(new_valid, z_mean, len(new_valid), class_no)
+                        detector.addsample2memory(new_data, z_mean, len(new_data), class_no)
                     else: # recurring
                         detector.resample(sample)
                         train = np.empty((0, reconstructeds.shape[1], reconstructeds.shape[2]))
@@ -233,11 +230,11 @@ if __name__ == '__main__':
                         while jj <= class_no:
                             train = np.vstack((train, detector.memory[jj]['sample']))
                             jj += 1
-                        # feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight, args.dropout)
-                        # feature_extracter.compile(loss=None, optimizer=optimis)
-                        detector.feature_extracter.fit(train, batch_size=args.batch_size, epochs=args.epoch, validation_split=0.2,
+                        feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight, args.dropout)
+                        feature_extracter.compile(loss=None, optimizer=optimis)
+                        feature_extracter.fit(train, batch_size=args.batch_size, epochs=args.epoch, validation_split=0.2,
                                               shuffle=True, callbacks=[es])
-                        # detector.feature_extracter = feature_extracter
+                        detector.feature_extracter = feature_extracter
                     collection_period = 1000000000
                     sample = np.empty((0, args.ws))
 
@@ -263,7 +260,7 @@ if __name__ == '__main__':
             for l in gt_margin:
                 if timestamp >= l[0] and timestamp <= l[1]:
                     no_TPS += 1
-                    delays.append(timestamp - l[2])
+                    delays.append(timestamp - l)
 
         scores = scores + [0] * (len(ts) - len(scores))
         filtered = filtered + [0] * (len(ts) - len(filtered))
@@ -271,10 +268,8 @@ if __name__ == '__main__':
         fig = plt.figure()
         fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
         ax[0].plot(ts, test_var_dl)
-        for cp in gt_margin:
-            # ax[0].axvline(x=cp, color='g', alpha=0.6)
-            ax[0].axvline(x=cp[0], color='green', linestyle='--')
-            ax[0].axvline(x=cp[1], color='green', linestyle='--')
+        for cp in cps:
+            ax[0].axvline(x=cp, color='g', alpha=0.6)
 
         ax[1].plot(ts, filtered)
         for cp in detector.N:

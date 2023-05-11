@@ -19,7 +19,7 @@ class Detector():
         self.epsilon = epsilon
 
     def compute_threshold(self):
-        threshold = -1
+        threshold = 0
         i = 0
         while i < len(self.current_distribution)-1:
             x = self.current_distribution[i]

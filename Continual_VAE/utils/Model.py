@@ -22,7 +22,7 @@ recon_metric = Mean(name='recon_loss')
 kl_metric = Mean(name='kl_loss')
 
 class Encoder(Model):
-    def __init__(self, timestep, input_dim, hid_dim, activation, z_dim, name='encoder', **kwargs):
+    def __init__(self, timestep, input_dim, hid_dim, activation, z_dim, dropout, name='encoder', **kwargs):
         super(Encoder, self).__init__(name=name, **kwargs)
         self.encoder_inputs = Input(shape=(timestep, input_dim), name='Input')
         self.encoder = Dense(hid_dim, activation=activation)
@@ -30,7 +30,7 @@ class Encoder(Model):
         self.z_log_sigma = Dense(z_dim, name='z_log_var')
         self.z_sample = Sampling()
         self.flat = Flatten()
-        self.dropout = Dropout(0.2)
+        self.dropout = Dropout(dropout)
 
     def call(self, inputs):
         self.encoder_inputs = inputs
@@ -43,12 +43,12 @@ class Encoder(Model):
         return z_mean, z_log_sigma, z
 
 class Decoder(Layer):
-    def __init__(self, timestep, input_dim, hid_dim, activation, name='decoder', **kwargs):
+    def __init__(self, timestep, input_dim, hid_dim, activation, dropout, name='decoder', **kwargs):
         super(Decoder, self).__init__(name=name, **kwargs)
         self.decoder = Dense(hid_dim, activation=activation)
         self.dec = Dense(timestep, activation='linear')
         self.reshape = Reshape((timestep, input_dim))
-        self.dropout = Dropout(0.2)
+        self.dropout = Dropout(dropout)
 
     def call(self, inputs):
         hidden =self.decoder(inputs)
@@ -59,10 +59,10 @@ class Decoder(Layer):
 # Define VAE as a model
 
 class VAE(Model):
-    def __init__(self, timestep, input_dim, lstm_dim, activation, z_dim, kl_weight, name='vae', **kwargs):
+    def __init__(self, timestep, input_dim, lstm_dim, activation, z_dim, kl_weight, dropout, name='vae', **kwargs):
         super(VAE, self).__init__(name=name, **kwargs)
-        self.encoder = Encoder(timestep, input_dim, lstm_dim, activation, z_dim, **kwargs)
-        self.decoder = Decoder(timestep, input_dim, lstm_dim, activation, **kwargs)
+        self.encoder = Encoder(timestep, input_dim, lstm_dim, activation, z_dim, dropout, **kwargs)
+        self.decoder = Decoder(timestep, input_dim, lstm_dim, activation, dropout, **kwargs)
         self.timestep = timestep
         self.kl_weight = kl_weight
 

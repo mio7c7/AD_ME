@@ -21,15 +21,16 @@ parser.add_argument('--g_noise', type=float, default=0.01, help='gaussian noise'
 parser.add_argument('--buffer_ts', type=int, default=500, help='Number of timestamps for initilisation')
 parser.add_argument('--bs', type=int, default=48, help='buffer size for ssa')
 parser.add_argument('--ws', type=int, default=40, help='window size')
-parser.add_argument('--collection_period', type=int, default=200, help='preprocess outlier filter')
+parser.add_argument('--collection_period', type=int, default=400, help='preprocess outlier filter')
 parser.add_argument('--memory_size', type=int, default=2000, help='preprocess outlier filter')
-parser.add_argument('--dense_dim', type=int, default=4, help='no of neuron in dense')
+parser.add_argument('--dense_dim', type=int, default=2, help='no of neuron in dense')
+parser.add_argument('--dropout', type=float, default=0.2, help='dropout')
 parser.add_argument('--kl_weight', type=float, default=1, help='kl_weight')
 parser.add_argument('--latent_dim', type=int, default=1, help='latent_dim')
 parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
-parser.add_argument('--epoch', type=int, default=400, help='epoch')
+parser.add_argument('--epoch', type=int, default=300, help='epoch')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
-parser.add_argument('--threshold', type=float, default=4, help='threshold')
+parser.add_argument('--threshold', type=float, default=3, help='threshold')
 parser.add_argument('--quantile', type=float, default=0.95, help='quantile')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
 parser.add_argument('--outfile', type=str, default='quantile1', help='name of file to save results')
@@ -52,7 +53,7 @@ def sliding_window(elements, window_size):
 
 def reservoir_sampling(memory, new_sample, class_no, seen):
     if args.memory_size // class_no >= args.collection_period:
-        random_indices = np.random.choice(len(new_sample), size=args.collection_period, replace=False)
+        random_indices = np.random.choice(len(new_sample), size=args.collection_period, replace=True)
         random_samples = new_sample[random_indices]
         memory = np.vstack((memory, random_samples))
         seen += len(random_indices)
@@ -106,7 +107,7 @@ if __name__ == '__main__':
         reconstructeds = sliding_window(X, args.ws)
         reconstructeds = np.expand_dims(reconstructeds, axis=-1)
 
-        feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight)
+        feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight, args.dropout)
         es = EarlyStopping(patience=7, verbose=1, min_delta=0.0001, monitor='val_loss', mode='auto')
         # optimis = Adam(learning_rate=0.001)
         optimis = RMSprop(learning_rate=0.01)
@@ -237,11 +238,13 @@ if __name__ == '__main__':
     FAR = Evaluation_metrics.False_Alarm_Rate(no_preds, no_TPS)
     prec = Evaluation_metrics.precision(no_TPS, no_preds)
     f1score = Evaluation_metrics.F1_score(rec, prec)
+    f2score = Evaluation_metrics.F2_score(rec, prec)
     dd = Evaluation_metrics.detection_delay(delays)
     print('recall: ', rec)
     print('false alarm rate: ', FAR)
     print('precision: ', prec)
     print('F1 Score: ', f1score)
+    print('F2 Score: ', f2score)
     print('detection delay: ', dd)
 
     npz_filename = args.outfile

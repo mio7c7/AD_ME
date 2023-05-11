@@ -47,7 +47,7 @@ def sliding_window(elements, window_size):
 
 def reservoir_sampling(memory, new_sample, class_no, seen):
     if args.memory_size // class_no >= args.collection_period:
-        random_indices = np.random.choice(len(new_sample), size=100, replace=False)
+        random_indices = np.random.choice(len(new_sample), size=100, replace=True)
         random_samples = new_sample[random_indices]
         memory = np.vstack((memory, random_samples))
         seen += len(random_indices)
@@ -62,6 +62,8 @@ def reservoir_sampling(memory, new_sample, class_no, seen):
 if __name__ == '__main__':
     folder = args.data
     fixed_threshold = 1.5
+    if not os.path.exists(args.outfile):
+        os.makedirs(args.outfile)
 
     error_margin = 604800  # 7 days
     no_CPs = 0
@@ -205,9 +207,6 @@ if __name__ == '__main__':
                     no_TPS += 1
                     delays.append(timestamp - l)
 
-        if not os.path.exists(args.outfile):
-            os.makedirs(args.outfile)
-
         fig = plt.figure()
         fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
         ax[0].plot(ts, test_var_dl)
@@ -225,11 +224,13 @@ if __name__ == '__main__':
     FAR = Evaluation_metrics.False_Alarm_Rate(no_preds, no_TPS)
     prec = Evaluation_metrics.precision(no_TPS, no_preds)
     f1score = Evaluation_metrics.F1_score(rec, prec)
+    f2score = Evaluation_metrics.F2_score(rec, prec)
     dd = Evaluation_metrics.detection_delay(delays)
     print('recall: ', rec)
     print('false alarm rate: ', FAR)
     print('precision: ', prec)
     print('F1 Score: ', f1score)
+    print('F2 Score: ', f2score)
     print('detection delay: ', dd)
 
     npz_filename = args.outfile

@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser(description='LIFEWATCH')
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
 parser.add_argument('--window_size', type=int, default=40, help='window_size')
-parser.add_argument('--max_points', type=int, default=50, help='min blocks required in a distrib. before starting detection')
+parser.add_argument('--max_points', type=int, default=400, help='min blocks required in a distrib. before starting detection')
 parser.add_argument('--min_batch_size', type=int, default=24, help='mini_batch_size')
 parser.add_argument('--threshold', type=float, default=5, help='threshold')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
@@ -35,14 +35,6 @@ def ssa_update(new, residuals, resmean, M2, j):
     M2 += delta * (residual - resmean)
     return residuals, resmean, M2
 
-def sliding_window(elements, window_size):
-    if len(elements) <= window_size:
-        return elements
-    new = np.empty((0, window_size))
-    for i in range(len(elements) - window_size + 1):
-        new = np.vstack((new, elements[i:i+window_size]))
-    return new
-
 def preprocess(data, fixed_t):
     del_idx = []
     for i in range (data.shape[0]):
@@ -53,6 +45,8 @@ def preprocess(data, fixed_t):
 if __name__ == '__main__':
     folder = args.data
     fixed_threshold = args.fixed_outlier
+    threshold = args.threshold
+
     error_margin = 604800  # 7 days
     no_CPs = 0
     no_preds = 0
@@ -93,7 +87,6 @@ if __name__ == '__main__':
 
         # initialisation
         ws = args.window_size
-        reconstructeds = sliding_window(X, ws)
         preds = []
         outliers = []
         input = test_var_dl.copy()
@@ -101,17 +94,6 @@ if __name__ == '__main__':
         ctr = 0
         filtered = []
         scores = []
-        thresholds = []
-        ct = 0
-        for mm in range(len(reconstructeds)):
-            detector.current_distribution = np.append(detector.current_distribution, reconstructeds[mm].reshape((1, -1)), axis=0)
-        if len(detector.current_distribution) >= args.min_batch_size:  # 9
-            dis_threshold = detector.compute_threshold()  # 10
-            detector.distribution_threshold.append(dis_threshold)  # 10
-            ct = dis_threshold
-            detector.distribution_pool.append(detector.current_distribution)  # 11
-            if detector.current_distribution_index is None:
-                detector.current_distribution_index = -1
 
         while ctr <= len(input):
             data = test_var_dl[ctr:ctr + ws]
@@ -133,53 +115,57 @@ if __name__ == '__main__':
                 threshold_lower = resmean - args.out_threshold * stdev
                 if residual[k] > threshold_upper or residual[k] < threshold_lower:
                     outliers.append(ctr + k)
-                    ys.append(np.mean(data))
+                    filtered.append(np.mean(data))
+                    scores.append(0)
                     continue
-                ys.append(data[k])
-            filtered = filtered + ys
-            scores = scores + [0]*ws
-            thresholds = thresholds + [detector.distribution_threshold[detector.current_distribution_index]] * ws
-            # current Bi
-            Bi = np.array(ys)
-            if len(detector.current_distribution) < args.min_batch_size:
-                detector.current_distribution = np.append(detector.current_distribution, [Bi], axis=0) #8
-                if len(detector.current_distribution) >= args.min_batch_size: #9
-                    dis_threshold = detector.compute_threshold() #10
-                    detector.distribution_threshold.append(dis_threshold) #10
-                    detector.distribution_pool.append(detector.current_distribution) #11
-                    if detector.current_distribution_index is None:
-                        detector.current_distribution_index = -1
-            else:
-                x = Bi
-                y = detector.current_distribution
-                distance = args.epsilon*wasserstein_distance(x, y.reshape(-1))
-                scores[-1] = distance
-                if distance > detector.distribution_threshold[detector.current_distribution_index]:
-                    min_dist = 100000
-                    m = 0
-                    dk = None
-                    while m < len(detector.distribution_pool):
-                        distribution = detector.distribution_pool[m]
-                        cur_threshold = detector.distribution_threshold[m]
-                        distance = args.epsilon*wasserstein_distance(x, distribution.reshape(-1))
-                        if distance < cur_threshold:
-                            if distance < min_dist:
-                                min_dist = distance
-                                dk = m
-                        m += 1
-                    if dk is None:
-                        detector.N.append(ctr+ws)
-                        detector.current_distribution_index = -1
-                        detector.current_distribution = np.empty((0, args.window_size))
-                    else:
-                        detector.R.append(ctr+ws)
-                        detector.current_distribution_index = m - 1
-                        detector.current_distribution = detector.distribution_pool[m - 1]
+                else:
+                    filtered.append(data[k])
 
-                if len(detector.current_distribution) < args.max_points:
-                    detector.current_distribution = np.append(detector.current_distribution, [Bi], axis=0)
-                    dis_threshold = detector.compute_threshold()
-                    detector.distribution_threshold[detector.current_distribution_index] = dis_threshold
+                if len(filtered) < ws:
+                    continue
+
+                # current Bi
+                Bi = np.array(filtered[-ws:])
+                if len(detector.current_distribution) < args.min_batch_size:
+                    scores.append(0)
+                    detector.current_distribution = np.append(detector.current_distribution, [Bi], axis=0) #8
+                    if len(detector.current_distribution) >= args.min_batch_size: #9
+                        dis_threshold = detector.compute_threshold() #10
+                        detector.distribution_threshold.append(threshold) #10
+                        detector.distribution_pool.append(detector.current_distribution) #11
+                        if detector.current_distribution_index is None:
+                            detector.current_distribution_index = -1
+                else:
+                    x = Bi
+                    y = detector.current_distribution
+                    distance = args.epsilon*wasserstein_distance(x, y.reshape(-1))
+                    scores.append(distance)
+                    if distance > detector.distribution_threshold[-1]:
+                        min_dist = 100000
+                        m = 0
+                        dk = None
+                        while m < len(detector.distribution_pool):
+                            distribution = detector.distribution_pool[m]
+                            cur_threshold = detector.distribution_threshold[m]
+                            distance = args.epsilon*wasserstein_distance(x, distribution.reshape(-1))
+                            if distance < cur_threshold:
+                                if distance < min_dist:
+                                    min_dist = distance
+                                    dk = m
+                            m += 1
+                        if dk is None:
+                            detector.N.append(ctr)
+                            detector.current_distribution_index = -1
+                            detector.current_distribution = np.empty((0, args.window_size))
+                        else:
+                            detector.R.append(ctr)
+                            detector.current_distribution_index = m - 1
+                            detector.current_distribution = detector.distribution_pool[m - 1]
+
+                    if len(detector.current_distribution) < args.max_points:
+                        detector.current_distribution = np.append(detector.current_distribution, [Bi], axis=0)
+                        dis_threshold = detector.compute_threshold()
+                        detector.distribution_threshold[detector.current_distribution_index] = dis_threshold
 
             if len(test_var_dl) - ctr <= ws:
                 break
@@ -192,8 +178,7 @@ if __name__ == '__main__':
                 ctr += ws
 
         preds = detector.N + detector.R
-        scores = scores + [0] * (len(ts) - len(scores))
-        thresholds = thresholds + [0] * (len(ts) - len(thresholds))
+        scores = scores + [0]*(len(ts)-len(scores))
         fig = plt.figure()
         fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
         ax[0].plot(ts, test_var_dl)
@@ -206,7 +191,6 @@ if __name__ == '__main__':
         for cp in detector.R:
             ax[2].axvline(x=ts[cp], color='r', alpha=0.6)
         ax[2].plot(ts, scores)
-        ax[2].plot(ts, thresholds)
         plt.savefig(args.outfile + '/' + name + '.png')
 
 

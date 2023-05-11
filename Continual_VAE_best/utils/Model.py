@@ -17,6 +17,7 @@ class Sampling(Layer):
         z_mean, z_log_sigma = inputs
         epsilon = K.random_normal(shape=(tf.shape(z_mean)[0], 1), mean=0.0, stddev=1.0)
         return z_mean + z_log_sigma * epsilon
+        # return z_mean + K.exp(z_log_sigma / 2) * epsilon
 # Encoder
 loss_metric = Mean(name='loss')
 recon_metric = Mean(name='recon_loss')
@@ -47,7 +48,7 @@ class Decoder(Layer):
     def __init__(self, timestep, input_dim, hid_dim, activation, dropout, name='decoder', **kwargs):
         super(Decoder, self).__init__(name=name, **kwargs)
         self.decoder = Dense(hid_dim, activation=activation)
-        self.dec = Dense(timestep, activation='linear')
+        self.dec = Dense(timestep, activation='sigmoid')
         self.reshape = Reshape((timestep, input_dim))
         self.dropout = Dropout(dropout)
 
@@ -73,7 +74,8 @@ class VAE(Model):
         return z_mean, z_log_sigma, z, pred
 
     def reconstruct_loss(self, inputs, pred):
-        return K.mean(K.square(inputs - pred))
+        return K.mean(K.sum(K.binary_crossentropy(inputs, pred), axis=-1))
+        # return K.mean(K.square(inputs - pred))
 
     def kl_divergence(self, z_mean, z_log_sigma):
         return -0.5 * K.sum(1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma), axis=-1)
@@ -83,7 +85,7 @@ class VAE(Model):
             z_mean, z_log_sigma, z, pred = self(inputs, training=True)
             reconstruction = self.reconstruct_loss(inputs, pred)
             kl = self.kl_divergence(z_mean, z_log_sigma)
-            loss = reconstruction + self.kl_weight * kl
+            loss = K.mean(reconstruction + self.kl_weight * kl)
             loss += sum(self.losses)
 
         grads = tape.gradient(loss, self.trainable_variables)

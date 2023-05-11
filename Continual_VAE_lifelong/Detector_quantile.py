@@ -33,6 +33,12 @@ class Detector():
         new_sample = np.expand_dims(new_sample, axis=-1)
         org = self.memory[self.current_index]['sample']
         seen = self.memory_info[self.current_index]['seen']
+        if len(org) < self.args.memory_size:
+            full = self.args.memory_size - len(org)
+            org = np.vstack((org, new_sample[:full]))
+            seen += full
+            new_sample = new_sample[full:]
+
         for ss in new_sample:
             j = np.random.randint(0, seen)
             if j < self.args.memory_size:
@@ -52,8 +58,8 @@ class Detector():
 
     def compute_threshold(self, rep, centroid):
         MSE = [mean_squared_error(rep[i], centroid) for i in range(len(rep))]
-        # mse_quantile = np.quantile(MSE, self.args.quantile)
-        # threshold = self.args.threshold * mse_quantile
-        threshold = np.mean(MSE) + self.args.threshold * np.std(MSE)
+        mse_quantile = np.quantile(MSE, self.args.quantile)
+        threshold = self.args.threshold * mse_quantile
+        # threshold = np.mean(MSE) + self.args.threshold * np.std(MSE)
         return threshold
 
