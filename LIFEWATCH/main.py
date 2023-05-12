@@ -14,14 +14,14 @@ from ssa.btgym_ssa import SSA
 parser = argparse.ArgumentParser(description='LIFEWATCH')
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
-parser.add_argument('--window_size', type=int, default=40, help='window_size')
+parser.add_argument('--window_size', type=int, default=20, help='window_size')
 parser.add_argument('--max_points', type=int, default=50, help='min blocks required in a distrib. before starting detection')
-parser.add_argument('--min_batch_size', type=int, default=24, help='mini_batch_size')
+parser.add_argument('--min_batch_size', type=int, default=20, help='mini_batch_size')
 parser.add_argument('--threshold', type=float, default=5, help='threshold')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
 parser.add_argument('--epsilon', type=float, default=1, help='epsilon')
-parser.add_argument('--outfile', type=str, default='analyse', help='name of file to save results')
+parser.add_argument('--outfile', type=str, default='analyse2', help='name of file to save results')
 args = parser.parse_args()
 
 def ssa_update(new, residuals, resmean, M2, j):
