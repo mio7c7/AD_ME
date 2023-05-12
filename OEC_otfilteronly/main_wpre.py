@@ -2,6 +2,7 @@ from utils.Detector import Detector
 import numpy as np
 import glob
 import sys
+import os
 import argparse
 import matplotlib.pyplot as plt
 import math
@@ -14,14 +15,14 @@ parser.add_argument('--data', type=str, default='../data3/*.npz', help='director
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
 parser.add_argument('--bs', type=int, default=24, help='buffer size for ssa')
 parser.add_argument('--forgetting_factor', type=float, default=0.9, help='between 0.9 and 1')
-parser.add_argument('--stabilisation_period', type=int, default=30, help='number of reference blocks')
+parser.add_argument('--stabilisation_period', type=int, default=40, help='number of reference blocks')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
-parser.add_argument('--normal_boundary', type=float, default=0.9, help='threshold for outlier filtering')
+parser.add_argument('--normal_boundary', type=float, default=0.85, help='threshold for outlier filtering')
 parser.add_argument('--guard_zone', type=float, default=0.95, help='threshold for outlier filtering')
 parser.add_argument('--p', type=float, default=10, help='threshold')
 parser.add_argument('--cs', type=float, default=2, help='c-separation')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
-parser.add_argument('--outfile', type=str, default='firstchannel', help='name of file to save results')
+parser.add_argument('--outfile', type=str, default='sumfilteronly', help='name of file to save results')
 args = parser.parse_args()
 
 def preprocess(data, fixed_t):
@@ -44,8 +45,14 @@ if __name__ == '__main__':
     no_preds = 0
     no_TPS = 0
     delays = []
+    ignored = ['../data3\\A043_T2bottom02.npz']
+
+    if not os.path.exists(args.outfile):
+        os.makedirs(args.outfile)
 
     for i in glob.glob(folder):
+        if i in ignored:
+            continue
         data = np.load(i, allow_pickle=True)
         name = i[-19:-12]
         train_ts, train_dl, test_ts_1gal, test_dl_1gal, label = data['train_ts'], data['train_dl'], data['test_ts_2gal'], data['test_dl_2gal'], data['label'].item()
@@ -85,13 +92,18 @@ if __name__ == '__main__':
         ctr = 0
         step = args.bs
         filtered = []
+        gt_margin = []
+        for tt in cps:
+            closest_element = ts[ts < tt].max()
+            idx = np.where(ts == closest_element)[0][0]
+            gt_margin.append((ts[idx - 10], tt + error_margin, tt))
 
         while ctr < len(test_var_dl):
             new = test_var_dl[ctr:ctr + step]
             updates = ssa.update(new)
             updates = ssa.transform(updates, state=ssa.get_state())[:, -step:]
-            # reconstructed = updates.sum(axis=0)
-            reconstructed = updates[1,:]
+            reconstructed = updates.sum(axis=0)
+            # reconstructed = updates[1,:]
             residual = new - reconstructed
             residuals = np.concatenate([residuals, residual])
             # reconstructeds = np.concatenate((reconstructeds, reconstructed))
@@ -107,12 +119,12 @@ if __name__ == '__main__':
 
                 if residual[k] > threshold_upper or residual[k] < threshold_lower:
                     outliers.append(ctr + k)
-                    filtered.append(np.mean(new))
-                    continue
+                    filtered.append(np.mean(reconstructed))
+                    # continue
                 else:
-                    filtered.append(new[k])
+                    filtered.append(reconstructed[k])
 
-                if detector.predict(np.array([new[k]]), ctr+k):
+                if detector.predict(np.array([reconstructed[k]]), ctr+k):
                     preds.append(ctr + k)
 
             if len(test_var_dl) - ctr <= args.bs:
@@ -125,26 +137,31 @@ if __name__ == '__main__':
                 ctr += args.bs
 
         fig = plt.figure()
-        fig, ax = plt.subplots(2, figsize=[18, 16], sharex=True)
+        fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
         ax[0].plot(ts, test_var_dl)
-        for cp in cps:
-            ax[0].axvline(x=cp, color='g', alpha=0.6)
+        for cp in gt_margin:
+            ax[0].axvline(x=cp[0], color='green', linestyle='--')
+            ax[0].axvline(x=cp[1], color='green', linestyle='--')
 
-        ax[1].plot(ts, filtered)
+        ax[1].plot(ts, detector.score)
         for cp in preds:
             ax[1].axvline(x=ts[cp], color='g', alpha=0.6)
 
+        ax[2].plot(ts, filtered)
+        # for cp in preds:
+        #     ax[1].axvline(x=ts[cp], color='g', alpha=0.6)
+
         # ax[2].plot(ts, multi_test[:, 1])
         # plt.show()
-        # plt.savefig(name + '.png')
+        plt.savefig(args.outfile + '/' + name + '.png')
         no_CPs += len(cps)
         no_preds += len(preds)
         for j in preds:
             timestamp = ts[j]
-            for l in cps:
-                if timestamp >= l and timestamp <= l + error_margin:
+            for l in gt_margin:
+                if timestamp >= l[0] and timestamp <= l[1]:
                     no_TPS += 1
-                    delays.append(timestamp - l)
+                    delays.append(timestamp - l[2])
 
     rec = Evaluation_metrics.recall(no_TPS, no_CPs)
     FAR = Evaluation_metrics.False_Alarm_Rate(no_preds, no_TPS)

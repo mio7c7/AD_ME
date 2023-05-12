@@ -210,6 +210,8 @@ if __name__ == '__main__':
                     window = np.array(filtered[-step + 1:])
                 else:
                     window = np.array(filtered[-args.ws - step + 1:])
+                if len(window) <= args.ws:
+                    break
                 window = sliding_window(window, args.ws)
                 if collection_period + len(window) < args.memory_size:
                     sample = np.concatenate((sample, window))
