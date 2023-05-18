@@ -7,7 +7,7 @@ class Detector():
     https://github.com/mchenaghlou/OnCAD-PAKDD-2017/blob/1b91d2313cb4eee55ef4423d2731aabb3de2f50b/2.OnCAD/OnCAD.m
     '''
 
-    def __init__(self, window_size, feature_extracter, args):
+    def __init__(self, window_size, args):
         self.window_size = window_size
         self.memory = {}  # store existing distributions
         self.memory_info = {} # store the distribution corresponding thresholds
@@ -16,7 +16,6 @@ class Detector():
         self.N = []
         self.R = []
         self.newsample = []
-        self.feature_extracter = feature_extracter
         self.args = args
 
     def addsample2memory(self, sample, rep, class_no):
@@ -27,32 +26,29 @@ class Detector():
         self.memory_info[class_no] = {'size': len(sample), 'threshold': threshold}
 
     def resample(self, new_sample):
-        new_sample = np.expand_dims(new_sample, axis=-1)
         org = self.memory[self.current_index]['sample']
         if len(org) < self.args.memory_size:
             full = self.args.memory_size - len(org)
             org = np.vstack((org, new_sample[:full]))
             new_sample = new_sample[full:]
-
         for ss in new_sample:
-            if random.random() < 0.75:
+            if random.random() < self.args.forgetting_factor:
                 org = np.delete(org, 0, axis=0)
-                org = np.concatenate((org, np.expand_dims(ss, axis=0)), axis=0)
-                # org[j] = ss
+                org = np.concatenate((org, ss.reshape(1, -1)), axis=0)
         self.memory[self.current_index]['sample'] = org
-        z_mean, z_log_sigma, z, pred = self.feature_extracter.predict(org)
-        self.memory[self.current_index]['rep'] = z_mean
-        self.memory[self.current_index]['centroid'] = np.array([np.mean(z_mean)])
+        self.memory[self.current_index]['rep'] = np.mean(org, axis=1).reshape(-1, 1)
+        self.memory[self.current_index]['centroid'] = np.array([np.mean(self.memory[self.current_index]['rep'])])
         self.current_centroid = self.memory[self.current_index]['centroid']
-        self.memory_info[self.current_index]['threshold'] = self.compute_threshold(z_mean, self.current_centroid)
+        self.memory_info[self.current_index]['threshold'] = self.compute_threshold(self.memory[self.current_index]['rep'], self.current_centroid)
 
     def updatememory(self):
-        self.resample(self.newsample[:-self.args.ws])
+        self.resample(self.newsample)
         self.newsample = []
 
     def compute_threshold(self, rep, centroid):
         MSE = [mean_squared_error(rep[i], centroid) for i in range(len(rep))]
-        threshold = np.mean(MSE) + self.args.threshold * np.std(MSE)
+        mse_quantile = np.quantile(MSE, self.args.quantile)
+        threshold = self.args.threshold * mse_quantile
         return threshold
 
     def updaterecur(self, new, rep):
@@ -66,8 +62,8 @@ class Detector():
             org = self.memory[self.current_index]['sample']
             org_rep = self.memory[self.current_index]['rep']
             random_indices = np.random.choice(len(org), size=(self.args.memory_size - len(new)), replace=True)
-            self.memory[self.current_index]['sample'] = np.concatenate((new, org[random_indices]))
-            self.memory[self.current_index]['rep'] = np.concatenate((rep, org_rep[random_indices]))
+            self.memory[self.current_index]['sample'] = np.concatenate((org[random_indices], new))
+            self.memory[self.current_index]['rep'] = np.concatenate((org_rep[random_indices], rep))
             self.memory[self.current_index]['centroid'] = np.array([np.mean(self.memory[self.current_index]['rep'])])
             self.current_centroid = self.memory[self.current_index]['centroid']
             self.memory_info[self.current_index]['threshold'] = self.compute_threshold(self.memory[self.current_index]['rep'], self.current_centroid)

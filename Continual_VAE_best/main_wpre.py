@@ -30,6 +30,8 @@ parser.add_argument('--kl_weight', type=float, default=1, help='kl_weight')
 parser.add_argument('--latent_dim', type=int, default=1, help='latent_dim')
 parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
 parser.add_argument('--epoch', type=int, default=100, help='epoch')
+parser.add_argument('--cp_range', type=int, default=5, help='range to determine cp')
+parser.add_argument('--forgetting_factor', type=float, default=0.75, help='forgetting_factor')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
 parser.add_argument('--threshold', type=float, default=5, help='threshold')
 parser.add_argument('--quantile', type=float, default=0.9, help='quantile')
@@ -109,13 +111,14 @@ if __name__ == '__main__':
         class_no = 1
         memory = X_valid
         if len(X_valid) < args.memory_size:
-            random_indices = np.random.choice(len(X_train), size=(args.memory_size-len(X_valid)), replace=False)
+            if len(X_train) >= args.memory_size - len(X_valid):
+                random_indices = np.random.choice(len(X_train), size=(args.memory_size - len(X_valid)), replace=False)
+            else:
+                random_indices = np.random.choice(len(X_train), size=len(X_train), replace=False)
             memory = np.concatenate((memory, X_train[random_indices]))
-        # random_indices = np.random.choice(len(reconstructeds), size=args.memory_size, replace=True)
-        # memory = reconstructeds[random_indices]
         z_mean, z_log_sigma, z, pred = feature_extracter.predict(memory)
         detector = Detector(args.ws, feature_extracter, args)
-        detector.addsample2memory(memory, z_mean, args.memory_size, class_no)
+        detector.addsample2memory(memory, z_mean, class_no)
 
         ctr = 0
         step = args.bs
@@ -173,7 +176,7 @@ if __name__ == '__main__':
                     thresholds.append(detector.memory_info[detector.current_index]['threshold'])
                     if score > detector.memory_info[detector.current_index]['threshold']:
                         cp_ctr.append(1)
-                        if len(cp_ctr) == 6:
+                        if len(cp_ctr) == args.cp_range + 1:
                             cp_ctr.pop(0)
                         if sum(cp_ctr) >= 3:
                             min_dist = 100000
@@ -202,7 +205,7 @@ if __name__ == '__main__':
                             break
                     else:
                         cp_ctr.append(0)
-                        if len(cp_ctr) == 6:
+                        if len(cp_ctr) == args.cp_range + 1:
                             cp_ctr.pop(0)
                         detector.newsample.append(window[aa])
             elif collection_period < args.memory_size:
@@ -227,8 +230,6 @@ if __name__ == '__main__':
                         while jj <= class_no:
                             exist_data = np.vstack((exist_data, detector.memory[jj]['sample']))
                             jj += 1
-                        # feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight, args.dropout)
-                        # feature_extracter.compile(loss=None, optimizer=optimis)
                         new_train, new_valid = train_test_split(new_data, test_size=0.5, shuffle=True, random_state=1)
                         exist_train, exist_valid = train_test_split(exist_data, test_size=0.2, shuffle=True, random_state=1)
                         train = np.concatenate((new_train, exist_train))
@@ -236,9 +237,8 @@ if __name__ == '__main__':
                         detector.feature_extracter.fit(train, batch_size=args.batch_size, epochs=args.epoch, validation_data=(valid, valid),
                                               shuffle=True, callbacks=[es])
                         z_mean, z_log_sigma, z, pred = detector.feature_extracter.predict(new_valid)
-                        # detector.feature_extracter = feature_extracter
                         class_no += 1
-                        detector.addsample2memory(new_valid, z_mean, len(new_valid), class_no)
+                        detector.addsample2memory(new_valid, z_mean, class_no)
                     else: # recurring
                         new_train, new_valid = train_test_split(np.expand_dims(sample, axis=-1), test_size=0.5, shuffle=True, random_state=1)
                         org = detector.memory[detector.current_index]['sample']
@@ -253,11 +253,8 @@ if __name__ == '__main__':
                         others_train, others_valid = train_test_split(others, test_size=0.2, shuffle=True, random_state=1)
                         train = np.concatenate((new_train, org, others_train))
                         valid = np.concatenate((new_valid, others_valid))
-                        # feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight, args.dropout)
-                        # feature_extracter.compile(loss=None, optimizer=optimis)
                         detector.feature_extracter.fit(train, batch_size=args.batch_size, epochs=args.epoch, validation_data=(valid, valid),
                                               shuffle=True, callbacks=[es])
-                        # detector.feature_extracter = feature_extracter
                         z_mean, z_log_sigma, z, pred = detector.feature_extracter.predict(new_valid)
                         detector.updaterecur(new_valid, z_mean)
                     collection_period = 1000000000
@@ -292,24 +289,23 @@ if __name__ == '__main__':
         thresholds = thresholds + [0] * (len(ts) - len(thresholds))
         fig = plt.figure()
         fig, ax = plt.subplots(3, figsize=[18, 16], sharex=True)
-        ax[0].plot(ts, test_var_dl)
-        for cp in gt_margin:
-            # ax[0].axvline(x=cp, color='g', alpha=0.6)
-            ax[0].axvline(x=cp[0], color='green', linestyle='--')
-            ax[0].axvline(x=cp[1], color='green', linestyle='--')
-
-        for cp in detector.N:
-            ax[0].axvline(x=ts[cp], color='purple', alpha=0.6)
-        for cp in detector.R:
-            ax[0].axvline(x=ts[cp], color='r', alpha=0.6)
         try:
+            ax[0].plot(ts, test_var_dl)
+            for cp in gt_margin:
+                # ax[0].axvline(x=cp, color='g', alpha=0.6)
+                ax[0].axvline(x=cp[0], color='green', linestyle='--')
+                ax[0].axvline(x=cp[1], color='green', linestyle='--')
+
+            for cp in detector.N:
+                ax[0].axvline(x=ts[cp], color='purple', alpha=0.6)
+            for cp in detector.R:
+                ax[0].axvline(x=ts[cp], color='r', alpha=0.6)
             ax[1].plot(ts, scores)
             ax[1].plot(ts, thresholds)
+            ax[2].plot(ts, filtered)
+            plt.savefig(args.outfile + '/' + name + '.png')
         except:
             print()
-        ax[2].plot(ts, filtered)
-        plt.savefig(args.outfile + '/' + name + '.png')
-
     rec = Evaluation_metrics.recall(no_TPS, no_CPs)
     FAR = Evaluation_metrics.False_Alarm_Rate(no_preds, no_TPS)
     prec = Evaluation_metrics.precision(no_TPS, no_preds)

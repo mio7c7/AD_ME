@@ -15,13 +15,12 @@ parser = argparse.ArgumentParser(description='LIFEWATCH')
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
 parser.add_argument('--window_size', type=int, default=20, help='window_size')
-parser.add_argument('--max_points', type=int, default=50, help='min blocks required in a distrib. before starting detection')
-parser.add_argument('--min_batch_size', type=int, default=20, help='mini_batch_size')
-parser.add_argument('--threshold', type=float, default=5, help='threshold')
+parser.add_argument('--max_points', type=int, default=20, help='min blocks required in a distrib. before starting detection')
+parser.add_argument('--min_batch_size', type=int, default=10, help='mini_batch_size')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
-parser.add_argument('--epsilon', type=float, default=1, help='epsilon')
-parser.add_argument('--outfile', type=str, default='analyse2', help='name of file to save results')
+parser.add_argument('--epsilon', type=float, default=0.5, help='epsilon')
+parser.add_argument('--outfile', type=str, default='200_400_05', help='name of file to save results')
 args = parser.parse_args()
 
 def ssa_update(new, residuals, resmean, M2, j):
@@ -58,11 +57,17 @@ if __name__ == '__main__':
     no_preds = 0
     no_TPS = 0
     delays = []
+    ignored = ['../data3\\A043_T2bottom02.npz', '../data3\\A441_T2bottom02.npz',
+               '../data3\\B402_T3bottom02.npz', '../data3\\B402_T4bottom02.npz',
+               '../data3\\B402_T4bottom06.npz', '../data3\\F257_T2bottom02.npz',
+               '../data3\\F257_T2bottom05.npz', '../data3\\F289_T4bottom02.npz', ]
 
     if not os.path.exists(args.outfile):
         os.makedirs(args.outfile)
 
     for i in glob.glob(folder):
+        if i in ignored:
+            continue
         data = np.load(i, allow_pickle=True)
         name = i[-19:-12]
         train_ts, train_dl, test_ts_1gal, test_dl_1gal, label = data['train_ts'], data['train_dl'], data[
@@ -133,7 +138,7 @@ if __name__ == '__main__':
                 threshold_lower = resmean - args.out_threshold * stdev
                 if residual[k] > threshold_upper or residual[k] < threshold_lower:
                     outliers.append(ctr + k)
-                    ys.append(np.mean(data))
+                    ys.append(np.mean(filtered[-10:] if len(filtered)>10 else 0))
                     continue
                 ys.append(data[k])
             filtered = filtered + ys
@@ -207,7 +212,7 @@ if __name__ == '__main__':
             ax[2].axvline(x=ts[cp], color='r', alpha=0.6)
         ax[2].plot(ts, scores)
         ax[2].plot(ts, thresholds)
-        plt.savefig(args.outfile + '/' + name + '.png')
+        # plt.savefig(args.outfile + '/' + name + '.png')
 
 
         no_CPs += len(cps)

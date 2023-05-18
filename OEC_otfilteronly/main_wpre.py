@@ -13,16 +13,16 @@ from ssa.btgym_ssa import SSA
 parser = argparse.ArgumentParser(description='Mstatistics evaluation on bottom 0.2 data')
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
-parser.add_argument('--bs', type=int, default=24, help='buffer size for ssa')
-parser.add_argument('--forgetting_factor', type=float, default=0.9, help='between 0.9 and 1')
-parser.add_argument('--stabilisation_period', type=int, default=40, help='number of reference blocks')
+parser.add_argument('--bs', type=int, default=50, help='buffer size for ssa')
+parser.add_argument('--forgetting_factor', type=float, default=0.65, help='between 0.9 and 1')
+parser.add_argument('--stabilisation_period', type=int, default=50, help='number of reference blocks')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
 parser.add_argument('--normal_boundary', type=float, default=0.85, help='threshold for outlier filtering')
-parser.add_argument('--guard_zone', type=float, default=0.95, help='threshold for outlier filtering')
-parser.add_argument('--p', type=float, default=10, help='threshold')
-parser.add_argument('--cs', type=float, default=2, help='c-separation')
+parser.add_argument('--guard_zone', type=float, default=0.9, help='threshold for outlier filtering')
+parser.add_argument('--p', type=float, default=20, help='threshold')
+parser.add_argument('--cs', type=float, default=1.5, help='c-separation')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
-parser.add_argument('--outfile', type=str, default='sumfilteronly', help='name of file to save results')
+parser.add_argument('--outfile', type=str, default='9_95_401', help='name of file to save results')
 args = parser.parse_args()
 
 def preprocess(data, fixed_t):
@@ -45,7 +45,10 @@ if __name__ == '__main__':
     no_preds = 0
     no_TPS = 0
     delays = []
-    ignored = ['../data3\\A043_T2bottom02.npz']
+    ignored = ['../data3\\A043_T2bottom02.npz', '../data3\\A441_T2bottom02.npz',
+               '../data3\\B402_T3bottom02.npz', '../data3\\B402_T4bottom02.npz',
+               '../data3\\B402_T4bottom06.npz', '../data3\\F257_T2bottom02.npz',
+               '../data3\\F257_T2bottom05.npz', '../data3\\F289_T4bottom02.npz', ]
 
     if not os.path.exists(args.outfile):
         os.makedirs(args.outfile)
@@ -119,13 +122,15 @@ if __name__ == '__main__':
 
                 if residual[k] > threshold_upper or residual[k] < threshold_lower:
                     outliers.append(ctr + k)
-                    filtered.append(np.mean(reconstructed))
+                    filtered.append(np.mean(filtered[-10:] if len(filtered) > 10 else 0))
                     # continue
                 else:
-                    filtered.append(reconstructed[k])
-
-                if detector.predict(np.array([reconstructed[k]]), ctr+k):
-                    preds.append(ctr + k)
+                    filtered.append(new[k])
+                try:
+                    if detector.predict(np.array([filtered[-1]]), ctr+k):
+                        preds.append(ctr + k)
+                except:
+                    print()
 
             if len(test_var_dl) - ctr <= args.bs:
                 break
@@ -153,7 +158,7 @@ if __name__ == '__main__':
 
         # ax[2].plot(ts, multi_test[:, 1])
         # plt.show()
-        plt.savefig(args.outfile + '/' + name + '.png')
+        # plt.savefig(args.outfile + '/' + name + '.png')
         no_CPs += len(cps)
         no_preds += len(preds)
         for j in preds:

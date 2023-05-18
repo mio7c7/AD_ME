@@ -25,7 +25,7 @@ do
      sbatch sbatch2.sh Continual_VAE/main8.py --data './data3/*.npz' --bs 48 --ws 40 --dense_dim 2 --kl_weight 1 --epoch 300 --out_threshold 2 --threshold 3 --quantile 0.95 --outfile 'main8_1'
      sbatch sbatch2.sh Continual_VAE/main8.py --data './data3/*.npz' --bs 48 --ws 40 --dense_dim 4 --kl_weight 1 --epoch 300 --out_threshold 2 --threshold 4 --quantile 0.95 --outfile 'main8_2'
      sbatch sbatch2.sh Continual_VAE/main8.py --data './data3/*.npz' --bs 48 --ws 40 --dense_dim 4 --kl_weight 1 --epoch 300 --out_threshold 2 --threshold 3 --quantile 0.96 --outfile 'main8_3'
-#      sbatch sbatch2.sh cmd1.py
+#      sbatch sbatch2.sh cmdbs.py
 #      sbatch sbatch2.sh cmd2.py
 #      sbatch sbatch2.sh cmd3.py
 done

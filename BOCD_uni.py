@@ -15,8 +15,8 @@ from bayesian_changepoint_detection.bocpd import BOCPD_UNI
 # from bayesian_changepoint_detection.bayesian_online import ConstantHazard, Detector
 import sys
 import argparse
-sys.path.append('evaluation/')
-import Evaluation_metrics
+from evaluation import Evaluation_metrics
+from ssa.btgym_ssa import SSA
 
 parser = argparse.ArgumentParser(description='Mstatistics evaluation on bottom 0.2 data')
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
@@ -105,56 +105,47 @@ if __name__ == '__main__':
     no_TPS = 0
     delays = []
 
+    ignored = ['../data3\\A043_T2bottom02.npz']
+
     for i in glob.glob(folder):
+        if i in ignored:
+            continue
         data = np.load(i, allow_pickle=True)
-        name = i[-19:-12]  # i[-11:-4]
-        train_ts, train_dl, test_ts_1gal, test_dl_1gal, label = data['train_ts'], data['train_dl'], data['test_ts_2gal'], data['test_dl_2gal'], data['label'].item()
+        name = i[-19:-12]
+        train_ts, train_dl, test_ts_1gal, test_dl_1gal, label = data['train_ts'], data['train_dl'], data[
+            'test_ts_2gal'], data['test_dl_2gal'], data['label'].item()
         dl = np.concatenate((train_dl, test_dl_1gal))
         test_dl_1gal = test_dl_1gal[~np.isnan(test_dl_1gal).any(axis=1)]
         test_ts_1gal = test_ts_1gal[~np.isnan(test_ts_1gal).any(axis=1)]
-
         test_dl_1gal = preprocess(test_dl_1gal, fixed_threshold)
         test_ts_1gal = preprocess(test_ts_1gal, fixed_threshold)
-        train_dl = preprocess(train_dl, fixed_threshold)
-        train_ts = preprocess(train_ts, fixed_threshold)
-
         ts = test_dl_1gal[:, 0]
         cps = label['test_2gal']
-
         train_var_dl = train_dl[:, 1]
-        train_ht_dl = train_dl[:, 2]
         test_var_dl = test_dl_1gal[:, 1]
-        test_ht_dl = test_dl_1gal[:, 2]
 
-        # train_var_dl_norm, test_var_dl_norm = normalisation(train_var_dl, test_var_dl)
-        # train_ht_dl_norm, test_ht_dl_norm = normalisation(train_ht_dl, test_ht_dl)
-        # multi_test = np.stack((test_var_dl, test_ht_dl), axis=1)
-        # fig = plt.figure(figsize=[25, 16])
-        # plt.plot(ts, test_var_dl, marker="o")
-        # plt.show()
+        train_dl_2gal = train_dl[~np.isnan(train_dl).any(axis=1)]
+        train_dl_2gal = preprocess(train_dl_2gal, fixed_threshold)
 
-        # Feature extraction on windows
-        # statistical
-        # train_dl = feature_extraction(train_var_dl)
-        # test_dl = feature_extraction(test_var_dl)
+        gt_margin = []
+        for tt in cps:
+            closest_element = ts[ts < tt].max()
+            idx = np.where(ts == closest_element)[0][0]
+            gt_margin.append((ts[idx - 10], tt + error_margin, tt))
 
-        # R, maxes = online_changepoint_detection(
-        #     multi_test, hazard_function, online_ll.MultivariateT(dims=2, dof=2)
-        # )
-
-        # bc = BayesianOnlineChangePointDetection(hazard_function, MultivariateT(dims=2, dof=2))
-        # rt_mle = np.empty((multi_test.shape[0],1))
-        # for i, d in enumerate(multi_test):
-        #     if i == 0:
-        #         continue
-        #     s = time()
-        #     bc.update(d)
-        #     rt_mle[i] = bc.rt
-        #     print(i, time() - s)
+        # initialisation for preprocessing module
+        X = train_dl_2gal[:, 1]
+        ssa = SSA(window=args.ssa_window, max_length=len(X))
+        X_pred = ssa.reset(X)
+        X_pred = ssa.transform(X_pred, state=ssa.get_state())
+        reconstructeds = X_pred.sum(axis=0)
+        residuals = X - reconstructeds
+        resmean = residuals.mean()
+        M2 = ((residuals - resmean) ** 2).sum()
 
         last_cp = -1
         NW = args.NW
-        candcps = []
+        preds = []
         lmt = args.lmt
         tracker = 0
         reseted = False
@@ -177,14 +168,12 @@ if __name__ == '__main__':
                 last_cp = t
                 tracker = 0
                 bc._reset()
-                candcps.append(t)
+                preds.append(t)
                 reseted = False
             elif ctr >= lmt-1:
                 bc.prune(NW)
                 tracker += 1
                 reseted = True
-
-
         # fig = plt.figure()
         # fig, ax = plt.subplots(2, figsize=[18, 16], sharex=True)
         # ax[0].plot(ts, test_var_dl)
@@ -197,27 +186,30 @@ if __name__ == '__main__':
         # plt.savefig(name + '.png')
 
         no_CPs += len(cps)
-        no_preds += len(candcps)
-        for j in candcps:
+        no_preds += len(preds)
+
+        for j in preds:
             timestamp = ts[j]
-            for l in cps:
-                if timestamp >= l and timestamp <= l + error_margin:
+            for l in gt_margin:
+                if timestamp >= l[0] and timestamp <= l[1]:
                     no_TPS += 1
-                    delays.append(timestamp - l)
+                    delays.append(timestamp - l[2])
 
     rec = Evaluation_metrics.recall(no_TPS, no_CPs)
     FAR = Evaluation_metrics.False_Alarm_Rate(no_preds, no_TPS)
     prec = Evaluation_metrics.precision(no_TPS, no_preds)
     f1score = Evaluation_metrics.F1_score(rec, prec)
+    f2score = Evaluation_metrics.F2_score(rec, prec)
     dd = Evaluation_metrics.detection_delay(delays)
     print('recall: ', rec)
     print('false alarm rate: ', FAR)
     print('precision: ', prec)
     print('F1 Score: ', f1score)
+    print('F2 Score: ', f2score)
     print('detection delay: ', dd)
+
     npz_filename = args.outfile
-    np.savez(npz_filename,
-             rec=rec, FAR=FAR, prec=prec, f1score=f1score, dd=dd)
+    np.savez(npz_filename, rec=rec, FAR=FAR, prec=prec, f1score=f1score, f2score=f2score, dd=dd)
 
 
 

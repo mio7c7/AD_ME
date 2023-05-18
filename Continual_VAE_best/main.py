@@ -111,11 +111,9 @@ if __name__ == '__main__':
         if len(X_valid) < args.memory_size:
             random_indices = np.random.choice(len(X_train), size=(args.memory_size-len(X_valid)), replace=False)
             memory = np.concatenate((memory, X_train[random_indices]))
-        # random_indices = np.random.choice(len(reconstructeds), size=args.memory_size, replace=True)
-        # memory = reconstructeds[random_indices]
         z_mean, z_log_sigma, z, pred = feature_extracter.predict(memory)
         detector = Detector(args.ws, feature_extracter, args)
-        detector.addsample2memory(memory, z_mean, args.memory_size, class_no)
+        detector.addsample2memory(memory, z_mean, class_no)
 
         ctr = 0
         step = args.bs
@@ -238,7 +236,7 @@ if __name__ == '__main__':
                         detector.feature_extracter = feature_extracter
                         z_mean, z_log_sigma, z, pred = detector.feature_extracter.predict(new_valid)
                         class_no += 1
-                        detector.addsample2memory(new_valid, z_mean, len(new_valid), class_no)
+                        detector.addsample2memory(new_valid, z_mean, class_no)
                     else: # recurring
                         new_train, new_valid = train_test_split(np.expand_dims(sample, axis=-1), test_size=0.5, shuffle=True, random_state=1)
                         org = detector.memory[detector.current_index]['sample']

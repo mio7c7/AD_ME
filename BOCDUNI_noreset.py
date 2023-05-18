@@ -13,7 +13,7 @@ import matplotlib.cm as cm
 from time import time
 # from bayesian_changepoint_detection.bocd import BayesianOnlineChangePointDetection
 # from bayesian_changepoint_detection.distribution import MultivariateT
-from bayesian_changepoint_detection.bocpd import MultivariateT, BOCPD, BOCPD_UNI
+# from bayesian_changepoint_detection.bocpd import MultivariateT, BOCPD, BOCPD_UNI
 # from bayesian_changepoint_detection.bayesian_online import ConstantHazard, Detector,
 import argparse
 import math
@@ -112,49 +112,57 @@ if __name__ == '__main__':
     delays = []
     initial_period = args.initial_period
 
+    ignored = ['../data3\\A043_T2bottom02.npz', '../data3\\A441_T2bottom02.npz',
+               '../data3\\B402_T3bottom02.npz', '../data3\\B402_T4bottom02.npz',
+               '../data3\\B402_T4bottom06.npz', '../data3\\F257_T2bottom02.npz',
+               '../data3\\F257_T2bottom05.npz', '../data3\\F289_T4bottom02.npz',]
+
     for i in glob.glob(folder):
+        if i in ignored:
+            continue
         data = np.load(i, allow_pickle=True)
-        name = i[-19:-12]  # i[-11:-4]
-        train_ts, train_dl, test_ts_1gal, test_dl_1gal, label = data['train_ts'], data['train_dl'], data['test_ts_2gal'], data['test_dl_2gal'], data['label'].item()
+        name = i[-19:-12]
+        train_ts, train_dl, test_ts_1gal, test_dl_1gal, label = data['train_ts'], data['train_dl'], data[
+            'test_ts_2gal'], data['test_dl_2gal'], data['label'].item()
         dl = np.concatenate((train_dl, test_dl_1gal))
         test_dl_1gal = test_dl_1gal[~np.isnan(test_dl_1gal).any(axis=1)]
         test_ts_1gal = test_ts_1gal[~np.isnan(test_ts_1gal).any(axis=1)]
-
         test_dl_1gal = preprocess(test_dl_1gal, fixed_threshold)
         test_ts_1gal = preprocess(test_ts_1gal, fixed_threshold)
-        train_dl = preprocess(train_dl, fixed_threshold)
-        train_ts = preprocess(train_ts, fixed_threshold)
-
         ts = test_dl_1gal[:, 0]
         cps = label['test_2gal']
-
         train_var_dl = train_dl[:, 1]
-        train_ht_dl = train_dl[:, 2]
         test_var_dl = test_dl_1gal[:, 1]
-        test_ht_dl = test_dl_1gal[:, 2]
 
-        # R, maxes = online_changepoint_detection(
-        #     test_var_dl, hazard_function, online_ll.StudentT(kappa=10)
-        # )
-        ssa = SSA(window=args.ssa_window, max_length=100)
-        X = test_var_dl[:initial_period]
+        train_dl_2gal = train_dl[~np.isnan(train_dl).any(axis=1)]
+        train_dl_2gal = preprocess(train_dl_2gal, fixed_threshold)
+
+        gt_margin = []
+        for tt in cps:
+            closest_element = ts[ts < tt].max()
+            idx = np.where(ts == closest_element)[0][0]
+            gt_margin.append((ts[idx - 10], tt + error_margin, tt))
+
+        # initialisation for preprocessing module
+        X = train_dl_2gal[:, 1]
+        ssa = SSA(window=args.ssa_window, max_length=len(X))
         X_pred = ssa.reset(X)
         X_pred = ssa.transform(X_pred, state=ssa.get_state())
-        reconstructed = X_pred.sum(axis=0)
-        residuals = X - reconstructed
+        reconstructeds = X_pred.sum(axis=0)
+        residuals = X - reconstructeds
         resmean = residuals.mean()
-        M2 = ((residuals - resmean) ** 2).sum() * (len(residuals) - 1) * residuals.var()
+        M2 = ((residuals - resmean) ** 2).sum()
 
-
-        ctr = initial_period
-        maxes = np.zeros(len(test_var_dl) - ctr + 1)
-        R = np.zeros((len(test_var_dl) - ctr + 1, len(test_var_dl) - ctr + 1))
+        ctr = 0
+        maxes = np.zeros(len(test_var_dl))
+        R = np.zeros((len(test_var_dl)+1, len(test_var_dl)+1))
         R[0, 0] = 1
         log_likelihood_class = online_ll.StudentT(kappa=10)
         outliers = []
         preds = []
-        scores = [0]*initial_period
+        scores = []
         step = args.bs
+        filtered = []
 
         while ctr < len(test_var_dl):
             new = test_var_dl[ctr:ctr + step]
@@ -166,30 +174,29 @@ if __name__ == '__main__':
 
             for k in range(len(new)):
                 delta = residual[k] - resmean
-                resmean += delta / (ctr + k)
+                resmean += delta / (ctr + k + len(train_dl_2gal))
                 M2 += delta * (residual[k] - resmean)
-
-                stdev = math.sqrt(M2 / (ctr + k - 1))
+                stdev = math.sqrt(M2 / (ctr + k + + len(train_dl_2gal) - 1))
                 threshold_upper = resmean + 2 * stdev
                 threshold_lower = resmean - 2 * stdev
-
                 if residual[k] > threshold_upper or residual[k] < threshold_lower:
-                    outliers.append(ctr+k)
-                    scores.append(0)
-                    continue
+                    outliers.append(ctr + k)
+                    filtered.append(np.mean(filtered[-10:] if len(filtered)>10 else 0))
+                else:
+                    filtered.append(new[k])
 
-                t = ctr + k - len(outliers) - initial_period
-                predprobs = log_likelihood_class.pdf(reconstructed[k])
+                t = ctr + k
+                predprobs = log_likelihood_class.pdf(filtered[-1])
                 H = hazard_function(np.array(range(t + 1)))
                 R[1: t + 2, t + 1] = R[0: t + 1, t] * predprobs * (1 - H)
                 R[0, t + 1] = np.sum(R[0: t + 1, t] * predprobs * H)
                 R[:, t + 1] = R[:, t + 1] / np.sum(R[:, t + 1])
-                log_likelihood_class.update_theta(reconstructed[k], t=t)
+                log_likelihood_class.update_theta(filtered[-1], t=t)
                 maxes[t] = R[:, t].argmax()
                 scores.append(R[delay, t])
 
                 if t > delay and R[delay, t] > args.threshold:
-                    preds.append(t+len(outliers)-delay+ initial_period)
+                    preds.append(t-delay)
 
             if len(test_var_dl) - ctr <= args.bs:
                 break
@@ -199,40 +206,39 @@ if __name__ == '__main__':
             else:
                 ctr += args.bs
 
-        no_CPs += len(cps)
-        no_preds += len(preds)
         for j in preds:
             timestamp = ts[j]
-            for l in cps:
-                if timestamp >= l and timestamp <= l + error_margin:
+            for l in gt_margin:
+                if timestamp >= l[0] and timestamp <= l[1]:
                     no_TPS += 1
-                    delays.append(timestamp - l)
-        #
-        # fig = plt.figure()
-        # fig, ax = plt.subplots(2, figsize=[18, 16], sharex=True)
-        # ax[0].plot(ts, test_var_dl)
-        # for cp in cps:
-        #     ax[0].axvline(x=cp, color='g', alpha=0.6)
-        #
-        # ax[1].plot(ts, scores)
-        # for cp in preds:
-        #     ax[1].axvline(x=ts[cp], color='g', alpha=0.6)
-        # plt.savefig(name + '.png')
+                    delays.append(timestamp - l[2])
+
+        fig = plt.figure()
+        fig, ax = plt.subplots(2, figsize=[18, 16], sharex=True)
+        ax[0].plot(ts, test_var_dl)
+        for cp in cps:
+            ax[0].axvline(x=cp, color='g', alpha=0.6)
+
+        ax[1].plot(ts, scores)
+        for cp in preds:
+            ax[1].axvline(x=ts[cp], color='g', alpha=0.6)
+        plt.savefig(name + '.png')
 
     rec = Evaluation_metrics.recall(no_TPS, no_CPs)
     FAR = Evaluation_metrics.False_Alarm_Rate(no_preds, no_TPS)
     prec = Evaluation_metrics.precision(no_TPS, no_preds)
     f1score = Evaluation_metrics.F1_score(rec, prec)
+    f2score = Evaluation_metrics.F2_score(rec, prec)
     dd = Evaluation_metrics.detection_delay(delays)
     print('recall: ', rec)
     print('false alarm rate: ', FAR)
     print('precision: ', prec)
     print('F1 Score: ', f1score)
+    print('F2 Score: ', f2score)
     print('detection delay: ', dd)
 
     npz_filename = args.outfile
-    np.savez(npz_filename,
-             rec=rec, FAR=FAR, prec=prec, f1score=f1score, dd=dd)
+    np.savez(npz_filename, rec=rec, FAR=FAR, prec=prec, f1score=f1score, f2score=f2score, dd=dd)
 
 
 
