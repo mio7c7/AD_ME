@@ -17,10 +17,10 @@ commands = [
     # "python Continual_VAE_best/main_qs.py --data './data3/*.npz' --ws 40 --min_requirement 200 --memory_size 400 --dense_dim 2 --dropout 0.5 --cp_range 5 --forgetting_factor 0.65 --out_threshold 2 --threshold 5 --quantile 0.95 --outfile 'bestqs_91'",
     # "python Continual_VAE_best/main_qs.py --data './data3/*.npz' --ws 40 --min_requirement 200 --memory_size 400 --dense_dim 2 --dropout 0.5 --cp_range 5 --forgetting_factor 0.55 --out_threshold 2 --threshold 5 --quantile 0.92 --outfile 'bestqs_101'",
     # "python Continual_VAE_best/main_qs.py --data './data3/*.npz' --ws 40 --min_requirement 200 --memory_size 400 --dense_dim 2 --dropout 0.5 --cp_range 5 --forgetting_factor 0.5 --out_threshold 2 --threshold 5 --quantile 0.92 --outfile 'bestqs_111'",
-    "python Continual_VAE_best/main_qs.py --data './data3/*.npz' --bs 150 --ws 100 --min_requirement 200 --memory_size 400 --dense_dim 2 --dropout 0.5 --cp_range 5 --forgetting_factor 0.55 --out_threshold 2 --threshold 4 --quantile 0.95 --outfile 'bestqs_w100'",
-    "python Continual_VAE_best/main_qs.py --data './data3/*.npz' --bs 200 --ws 150 --min_requirement 200 --memory_size 400 --dense_dim 2 --dropout 0.5 --cp_range 5 --forgetting_factor 0.55 --out_threshold 2 --threshold 4 --quantile 0.95 --outfile 'bestqs_w150'",
-    "python Continual_VAE_best/main_qs.py --data './data3/*.npz' --bs 125 --ws 75 --min_requirement 200 --memory_size 400 --dense_dim 2 --dropout 0.5 --cp_range 5 --forgetting_factor 0.55 --out_threshold 2 --threshold 4 --quantile 0.95 --outfile 'bestqs_w75'",
-    "python Continual_VAE_best/main_qs.py --data './data3/*.npz' --bs 100 --ws 50 --min_requirement 200 --memory_size 400 --dense_dim 2 --dropout 0.5 --cp_range 5 --forgetting_factor 0.55 --out_threshold 2 --threshold 4 --quantile 0.95 --outfile 'bestqs_w50'",
+    "python Continual_VAE_best/main_qs.py --data './data3/*.npz' --bs 50 --ws 60 --min_requirement 200 --memory_size 400 --dense_dim 2 --dropout 0.5 --cp_range 10 --forgetting_factor 0.55 --out_threshold 2 --threshold 3 --quantile 0.95 --outfile 'bestqs_w50'",
+    "python Continual_VAE_best/main_qs.py --data './data3/*.npz' --bs 75 --ws 85 --min_requirement 200 --memory_size 400 --dense_dim 2 --dropout 0.5 --cp_range 10 --forgetting_factor 0.55 --out_threshold 2 --threshold 3 --quantile 0.95 --outfile 'bestqs_w75'",
+    # "python Continual_VAE_best/main_qs.py --data './data3/*.npz' --bs 125 --ws 75 --min_requirement 200 --memory_size 400 --dense_dim 2 --dropout 0.5 --cp_range 5 --forgetting_factor 0.55 --out_threshold 2 --threshold 4 --quantile 0.95 --outfile 'bestqs_w75'",
+    # "python Continual_VAE_best/main_qs.py --data './data3/*.npz' --bs 100 --ws 50 --min_requirement 200 --memory_size 400 --dense_dim 2 --dropout 0.5 --cp_range 5 --forgetting_factor 0.55 --out_threshold 2 --threshold 4 --quantile 0.95 --outfile 'bestqs_w50'",
 ]
 
 # Loop over the commands and submit each one as a batch job
