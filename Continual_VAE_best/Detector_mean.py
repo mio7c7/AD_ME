@@ -18,21 +18,27 @@ class Detector():
         self.newsample = []
         self.args = args
 
-    def addsample2memory(self, sample, rep, class_no):
+    def addsample2memory(self, sample, rep, class_no, seen):
         self.memory[class_no] = {'sample': sample, 'rep': rep, 'centroid': np.array([np.mean(rep)])}
         self.current_index = class_no
         self.current_centroid = self.memory[class_no]['centroid']
         threshold = self.compute_threshold(rep, self.current_centroid)
-        self.memory_info[class_no] = {'size': len(sample), 'threshold': threshold}
+        self.memory_info[class_no] = {'size': len(sample), 'threshold': threshold, 'seen': seen}
 
     def resample(self, new_sample):
         org = self.memory[self.current_index]['sample']
+        if self.memory_info[self.current_index]['seen'] <= self.args.memory_size:
+            forgetting_factor = 0.75
+        elif self.memory_info[self.current_index]['seen'] <= 4000:
+            forgetting_factor = 0.783333332 - 0.00008333333*self.memory_info[self.current_index]['seen']
+        else:
+            forgetting_factor = 0.45
         if len(org) < self.args.memory_size:
             full = self.args.memory_size - len(org)
             org = np.vstack((org, new_sample[:full]))
             new_sample = new_sample[full:]
         for ss in new_sample:
-            if random.random() < self.args.forgetting_factor:
+            if random.random() < forgetting_factor:
                 org = np.delete(org, 0, axis=0)
                 org = np.concatenate((org, ss.reshape(1, -1)), axis=0)
         self.memory[self.current_index]['sample'] = org
@@ -40,6 +46,7 @@ class Detector():
         self.memory[self.current_index]['centroid'] = np.array([np.mean(self.memory[self.current_index]['rep'])])
         self.current_centroid = self.memory[self.current_index]['centroid']
         self.memory_info[self.current_index]['threshold'] = self.compute_threshold(self.memory[self.current_index]['rep'], self.current_centroid)
+        self.memory_info[self.current_index]['seen'] += len(new_sample)
 
     def updatememory(self):
         self.resample(self.newsample)

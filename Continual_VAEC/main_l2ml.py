@@ -16,8 +16,8 @@ import os
 parser = argparse.ArgumentParser(description='Mstatistics evaluation on bottom 0.2 data')
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
-parser.add_argument('--bs', type=int, default=60, help='buffer size for ssa')
-parser.add_argument('--ws', type=int, default=50, help='window size')
+parser.add_argument('--bs', type=int, default=150, help='buffer size for ssa')
+parser.add_argument('--ws', type=int, default=100, help='window size')
 parser.add_argument('--min_requirement', type=int, default=300, help='window size')
 parser.add_argument('--memory_size', type=int, default=500, help='memory size per distribution ')
 parser.add_argument('--cp_range', type=int, default=10, help='range to determine cp')
@@ -48,7 +48,7 @@ if __name__ == '__main__':
     folder = args.data
     fixed_threshold = 1.5
 
-    error_margin = 800000  # 7 days
+    error_margin = 864000  # 7 days
     no_CPs = 0
     no_preds = 0
     no_TPS = 0
@@ -272,6 +272,9 @@ if __name__ == '__main__':
     print('F1 Score: ', f1score)
     print('F2 Score: ', f2score)
     print('detection delay: ', dd)
+    print(no_CPs)
+    print(no_TPS)
+    print(no_preds)
 
     npz_filename = args.outfile
     np.savez(npz_filename, rec=rec, FAR=FAR, prec=prec, f1score=f1score, f2score=f2score, dd=dd)

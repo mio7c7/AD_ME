@@ -20,21 +20,21 @@ import os
 parser = argparse.ArgumentParser(description='Mstatistics evaluation on bottom 0.2 data')
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
-parser.add_argument('--bs', type=int, default=85, help='buffer size for ssa')
-parser.add_argument('--ws', type=int, default=75, help='window size')
-parser.add_argument('--min_requirement', type=int, default=200, help='window size')
-parser.add_argument('--memory_size', type=int, default=400, help='memory size per distribution ')
+parser.add_argument('--bs', type=int, default=60, help='buffer size for ssa')
+parser.add_argument('--ws', type=int, default=50, help='window size')
+parser.add_argument('--min_requirement', type=int, default=300, help='window size')
+parser.add_argument('--memory_size', type=int, default=500, help='memory size per distribution ')
 parser.add_argument('--dense_dim', type=int, default=2, help='no of neuron in dense')
 parser.add_argument('--dropout', type=float, default=0.5, help='dropout')
 parser.add_argument('--kl_weight', type=float, default=1, help='kl_weight')
 parser.add_argument('--latent_dim', type=int, default=1, help='latent_dim')
-parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
+parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
 parser.add_argument('--epoch', type=int, default=100, help='epoch')
-parser.add_argument('--cp_range', type=int, default=25, help='range to determine cp')
+parser.add_argument('--cp_range', type=int, default=15, help='range to determine cp')
 parser.add_argument('--forgetting_factor', type=float, default=0.55, help='forgetting_factor')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
-parser.add_argument('--threshold', type=float, default=2, help='threshold')
-parser.add_argument('--quantile', type=float, default=0.975, help='quantile')
+parser.add_argument('--threshold', type=float, default=4, help='threshold')
+parser.add_argument('--quantile', type=float, default=0.95, help='quantile')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
 parser.add_argument('--outfile', type=str, default='qs100_400_5_9_5new', help='name of file to save results')
 
@@ -56,7 +56,7 @@ def sliding_window(elements, window_size):
 
 if __name__ == '__main__':
     folder = args.data
-    fixed_threshold = 1.5
+    fixed_threshold = 1 #1.5
 
     error_margin = 777600  # 7 days
     no_CPs = 0
@@ -138,7 +138,7 @@ if __name__ == '__main__':
         for tt in cps:
             closest_element = ts[ts < tt].max()
             idx = np.where(ts == closest_element)[0][0]
-            gt_margin.append((ts[idx-10], tt+error_margin, tt))
+            gt_margin.append((ts[idx-24], tt+error_margin, tt))
 
         while ctr < test_var_dl.shape[0]:
             new = test_var_dl[ctr:ctr + step]
@@ -214,7 +214,7 @@ if __name__ == '__main__':
                 # update the rep and threshold for the current distribution
                 if collection_period > args.min_requirement:
                     detector.updatememory(args.forgetting_factor)
-            elif collection_period < args.min_requirement:
+            elif collection_period <= args.min_requirement:
                 scores = scores + [0] * step
                 thresholds = thresholds + [0] * step
                 if len(sample) == 0:
@@ -224,7 +224,7 @@ if __name__ == '__main__':
                 if len(window) <= args.ws:
                     break
                 window = sliding_window(window, args.ws)
-                if collection_period + len(window) < args.min_requirement:
+                if collection_period + len(window) <= args.min_requirement:
                     sample = np.concatenate((sample, window))
                     collection_period += len(window)
                 else: #new
@@ -238,7 +238,7 @@ if __name__ == '__main__':
                             jj += 1
                         new_train, new_valid = train_test_split(new_data, test_size=0.75, shuffle=True, random_state=1)
                         exist_train, exist_valid = train_test_split(exist_data, test_size=0.2, shuffle=True, random_state=1)
-                        train = np.concatenate((new_train, exist_train))
+                        train = np.concatenate((new_train, new_train, exist_train))
                         valid = np.concatenate((new_valid, exist_valid))
                         detector.feature_extracter.fit(train, batch_size=args.batch_size, epochs=args.epoch, validation_data=(valid, valid), shuffle=True, callbacks=[es])
                         z_mean, z_log_sigma, z, pred = detector.feature_extracter.predict(new_valid)
@@ -256,7 +256,7 @@ if __name__ == '__main__':
                             others = np.vstack((others, detector.memory[jj]['sample']))
                             jj += 1
                         others_train, others_valid = train_test_split(others, test_size=0.2, shuffle=True, random_state=1)
-                        train = np.concatenate((new_train, org, others_train))
+                        train = np.concatenate((new_train, new_train, org, others_train))
                         valid = np.concatenate((new_valid, others_valid))
                         detector.feature_extracter.fit(train, batch_size=args.batch_size, epochs=args.epoch, validation_data=(valid, valid), shuffle=True, callbacks=[es])
                         z_mean, z_log_sigma, z, pred = detector.feature_extracter.predict(new_valid)

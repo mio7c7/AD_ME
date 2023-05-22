@@ -3,10 +3,11 @@ import sys
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
-from Detector_mean import Detector
-from scipy.stats import wasserstein_distance
+from Detector_mmd_real import Detector
+from sklearn.metrics.pairwise import pairwise_kernels
+from sklearn.decomposition import KernelPCA
+from sklearn.metrics.pairwise import rbf_kernel
 import math
 sys.path.append('./')
 from evaluation import Evaluation_metrics
@@ -16,17 +17,17 @@ import os
 parser = argparse.ArgumentParser(description='Mstatistics evaluation on bottom 0.2 data')
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
-parser.add_argument('--bs', type=int, default=60, help='buffer size for ssa')
-parser.add_argument('--ws', type=int, default=50, help='window size')
+parser.add_argument('--bs', type=int, default=150, help='buffer size for ssa')
+parser.add_argument('--ws', type=int, default=100, help='window size')
 parser.add_argument('--min_requirement', type=int, default=300, help='window size')
 parser.add_argument('--memory_size', type=int, default=500, help='memory size per distribution ')
-parser.add_argument('--cp_range', type=int, default=10, help='range to determine cp')
+parser.add_argument('--cp_range', type=int, default=5, help='range to determine cp')
 parser.add_argument('--forgetting_factor', type=float, default=0.55, help='forgetting_factor')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
-parser.add_argument('--threshold', type=float, default=3, help='threshold')
-parser.add_argument('--quantile', type=float, default=0.975, help='quantile')
+parser.add_argument('--threshold', type=float, default=1.5, help='threshold')
+parser.add_argument('--quantile', type=float, default=0.95, help='quantile')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
-parser.add_argument('--outfile', type=str, default='l2', help='name of file to save results')
+parser.add_argument('--outfile', type=str, default='mmdr1', help='name of file to save results')
 
 args = parser.parse_args()
 def preprocess(data, fixed_t):
@@ -36,6 +37,12 @@ def preprocess(data, fixed_t):
             del_idx.append(i)
     return np.delete(data, del_idx, axis=0)
 
+# Scale input data to range of -1 to 1
+def scale_input(x):
+    input_min = 0
+    input_max = 1
+    return (x - input_min) / (input_max - input_min)
+
 def sliding_window(elements, window_size):
     if len(elements) <= window_size:
         return elements
@@ -44,11 +51,18 @@ def sliding_window(elements, window_size):
         new = np.vstack((new, elements[i:i+window_size]))
     return new
 
+def maximum_mean_discrepancy(X, Y, kernel='rbf', gamma=None):
+    K_XX = pairwise_kernels(X, metric=kernel, gamma=gamma)
+    K_YY = pairwise_kernels(Y, metric=kernel, gamma=gamma)
+    K_XY = pairwise_kernels(X, Y, metric=kernel, gamma=gamma)
+    mmd = np.mean(K_XX) - 2 * np.mean(K_XY) + np.mean(K_YY)
+    return mmd
+
 if __name__ == '__main__':
     folder = args.data
     fixed_threshold = 1.5
 
-    error_margin = 800000  # 7 days
+    error_margin = 1036800 # 12 days
     no_CPs = 0
     no_preds = 0
     no_TPS = 0
@@ -63,6 +77,9 @@ if __name__ == '__main__':
 
     for i in glob.glob(folder):
         if i in ignored:
+            continue
+        # if i !='../data3ata3ata3\\J496_T5bottom02.npz' and i !='../data3\\J802_T1bottom02.npz' and i !='../data3\\J023_T1bottom02.npz' and i !='../data3\\Q152_T2bottom02.npz':
+        if i !='../data3\\Q152_T1bottom02.npz':
             continue
         data = np.load(i, allow_pickle=True)
         name = i[-19:-12]
@@ -98,12 +115,12 @@ if __name__ == '__main__':
             random_indices = np.random.choice(len(reconstructeds), size=args.memory_size, replace=False)
             memory = memory[random_indices]
         detector = Detector(args.ws, args)
-        z_mean = np.mean(memory, axis=1).reshape(-1,1)
-        detector.addsample2memory(memory, z_mean, class_no, len(memory))
+        detector.addsample2memory(memory, class_no, len(memory))
 
         ctr = 0
         step = args.bs
         scores = [0]*(args.ws-1)
+        mss = [0] * (args.ws - 1)
         outliers = []
         preds = []
         filtered = []
@@ -112,11 +129,10 @@ if __name__ == '__main__':
         detected = False
         thresholds = [0]*(args.ws-1)
         gt_margin = []
-        cp_ctr = []
         for tt in cps:
             closest_element = ts[ts < tt].max()
             idx = np.where(ts == closest_element)[0][0]
-            gt_margin.append((ts[idx-10], tt+error_margin, tt))
+            gt_margin.append((ts[idx-96], tt+error_margin, tt))
 
         while ctr < test_var_dl.shape[0]:
             new = test_var_dl[ctr:ctr + step]
@@ -136,7 +152,7 @@ if __name__ == '__main__':
 
                 if residual[i1] > threshold_upper or residual[i1] < threshold_lower:
                     outliers.append(ctr + i1)
-                    filtered.append(np.mean(filtered[-10:] if len(filtered)>10 else 0))
+                    filtered.append(np.mean(filtered[-5:] if len(filtered)>5 else 0))
                 else:
                     filtered.append(new[i1])
 
@@ -149,51 +165,50 @@ if __name__ == '__main__':
                 if len(window) <= args.ws:
                     break
                 window = sliding_window(window, args.ws)
-                z_mean = np.mean(window, axis=1).reshape(-1,1)
-
-                for aa in range(len(z_mean)):
-                    score = mean_squared_error(z_mean[aa], detector.current_centroid)
+                for aa in range(len(window)):
+                    score = maximum_mean_discrepancy(window[aa].reshape(-1, 1), detector.current_centroid.reshape(-1, 1))
                     scores.append(score)
                     thresholds.append(detector.memory_info[detector.current_index]['threshold'])
-                    if score > detector.memory_info[detector.current_index]['threshold']:
-                        cp_ctr.append(1)
-                        if len(cp_ctr) == args.cp_range + 1:
-                            cp_ctr.pop(0)
-                        if sum(cp_ctr) >= args.cp_range*0.6:
-                            min_dist = 100000
-                            n = 1
+                    ms = np.median(scores[-args.cp_range:])
+                    mss.append(ms)
+                    if ms > detector.memory_info[detector.current_index]['threshold']:
+                        min_dist = 100000
+                        n = 1
+                        dk = None
+                        while n <= len(detector.memory):
+                            distribution = detector.memory[n]['centroid']
+                            cur_threshold = detector.memory_info[n]['threshold']
+                            try:
+                                mm = sliding_window(np.array(filtered[-args.ws-step+aa + 1-args.cp_range:-step+aa]), args.ws)
+                                distance = np.median([maximum_mean_discrepancy(mm[i].reshape(-1, 1), detector.current_centroid.reshape(-1, 1)) for i in range(len(mm))])
+                            except:
+                                distance = maximum_mean_discrepancy(window[aa].reshape(-1, 1), detector.current_centroid.reshape(-1, 1))
+                            if distance < cur_threshold:
+                                if distance < min_dist:
+                                    min_dist = distance
+                                    dk = n
+                            n += 1
+                        if dk == len(detector.memory):
                             dk = None
-                            while n <= len(detector.memory):
-                                distribution = detector.memory[n]['centroid']
-                                cur_threshold = detector.memory_info[n]['threshold']
-                                distance = mean_squared_error(z_mean[aa], distribution)
-                                if distance < cur_threshold:
-                                    if distance < min_dist:
-                                        min_dist = distance
-                                        dk = n
-                                n += 1
-                            if dk is None:
-                                detector.N.append(ctr + aa)
-                                detector.current_index = -1
-                            else:
-                                detector.R.append(ctr + aa)
-                                detector.current_index = dk
-                            collection_period = 0
-                            detected = True
-                            filtered = filtered[:-len(z_mean) + aa + 1]
-                            detector.newsample = []
-                            cp_ctr = []
-                            break
+                        if dk is None:
+                            detector.N.append(ctr + aa)
+                            detector.current_index = -1
+                        else:
+                            detector.R.append(ctr + aa)
+                            detector.current_index = dk
+                        collection_period = 0
+                        detected = True
+                        filtered = filtered[:-len(window) + aa + 1]
+                        detector.newsample = []
+                        break
                     else:
-                        cp_ctr.append(0)
-                        if len(cp_ctr) == args.cp_range + 1:
-                            cp_ctr.pop(0)
                         detector.newsample.append(window[aa])
                 # update the rep and threshold for the current distribution
                 if collection_period > args.min_requirement:
                     detector.updatememory()
-            elif collection_period < args.min_requirement:
+            elif collection_period <= args.min_requirement:
                 scores = scores + [0] * step
+                mss = mss + [0] * step
                 thresholds = thresholds + [0] * step
                 if len(sample) == 0:
                     window = np.array(filtered[-step + 1:])
@@ -202,21 +217,18 @@ if __name__ == '__main__':
                 if len(window) <= args.ws:
                     break
                 window = sliding_window(window, args.ws)
-                if collection_period + len(window) < args.min_requirement:
+                if collection_period + len(window) <= args.min_requirement:
                     sample = np.concatenate((sample, window))
                     collection_period += len(window)
                 else: #new
                     sample = np.concatenate((sample, window))
                     if detector.current_index == -1: # new cluster
-                        z_mean = np.mean(sample, axis=1).reshape(-1,1)
                         class_no += 1
-                        detector.addsample2memory(sample, z_mean, class_no, len(sample))
+                        detector.addsample2memory(sample, class_no, len(sample))
                     else: # recurring
-                        z_mean = np.mean(sample, axis=1).reshape(-1,1)
-                        detector.updaterecur(sample, z_mean)
+                        detector.updaterecur(sample)
                     collection_period = 1000000000
                     sample = np.empty((0, args.ws))
-
             if detected:
                 ctr += aa + 1
                 detected = False
@@ -227,16 +239,6 @@ if __name__ == '__main__':
                 step = len(test_var_dl) - ctr
             else:
                 ctr += args.bs
-
-        preds = detector.N + detector.R
-        no_CPs += len(cps)
-        no_preds += len(preds)
-        for j in preds:
-            timestamp = ts[j]
-            for l in gt_margin:
-                if timestamp >= l[0] and timestamp <= l[1]:
-                    no_TPS += 1
-                    delays.append(timestamp - l[2])
 
         scores = scores + [0] * (len(ts) - len(scores))
         filtered = filtered + [0] * (len(ts) - len(filtered))
@@ -254,10 +256,21 @@ if __name__ == '__main__':
                 ax[0].axvline(x=ts[cp], color='r', alpha=0.6)
             ax[1].plot(ts, scores)
             ax[1].plot(ts, thresholds)
+            ax[1].plot(ts, mss)
             ax[2].plot(ts, filtered)
             plt.savefig(args.outfile + '/' + name + '.png')
         except:
             print()
+
+        preds = detector.N + detector.R
+        no_CPs += len(cps)
+        no_preds += len(preds)
+        for j in preds:
+            timestamp = ts[j]
+            for l in gt_margin:
+                if timestamp >= l[0] and timestamp <= l[1]:
+                    no_TPS += 1
+                    delays.append(timestamp - l[2])
 
 
     rec = Evaluation_metrics.recall(no_TPS, no_CPs)

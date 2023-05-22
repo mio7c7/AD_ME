@@ -5,8 +5,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
-from Detector_mean import Detector
+from tensorflow.keras.layers import Input, Dense, Lambda
+from utils.Model import VAE
+from Detector_quantile import Detector
 from scipy.stats import wasserstein_distance
+from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.optimizers import *
 import math
 sys.path.append('./')
 from evaluation import Evaluation_metrics
@@ -20,13 +24,19 @@ parser.add_argument('--bs', type=int, default=60, help='buffer size for ssa')
 parser.add_argument('--ws', type=int, default=50, help='window size')
 parser.add_argument('--min_requirement', type=int, default=300, help='window size')
 parser.add_argument('--memory_size', type=int, default=500, help='memory size per distribution ')
-parser.add_argument('--cp_range', type=int, default=10, help='range to determine cp')
+parser.add_argument('--dense_dim', type=int, default=32, help='no of neuron in dense')
+parser.add_argument('--dropout', type=float, default=0.5, help='dropout')
+parser.add_argument('--kl_weight', type=float, default=1, help='kl_weight')
+parser.add_argument('--latent_dim', type=int, default=1, help='latent_dim')
+parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
+parser.add_argument('--epoch', type=int, default=100, help='epoch')
+parser.add_argument('--cp_range', type=int, default=25, help='range to determine cp')
 parser.add_argument('--forgetting_factor', type=float, default=0.55, help='forgetting_factor')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
-parser.add_argument('--threshold', type=float, default=3, help='threshold')
+parser.add_argument('--threshold', type=float, default=2, help='threshold')
 parser.add_argument('--quantile', type=float, default=0.975, help='quantile')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
-parser.add_argument('--outfile', type=str, default='l2', help='name of file to save results')
+parser.add_argument('--outfile', type=str, default='qs100_400_5_9_5mean', help='name of file to save results')
 
 args = parser.parse_args()
 def preprocess(data, fixed_t):
@@ -48,7 +58,7 @@ if __name__ == '__main__':
     folder = args.data
     fixed_threshold = 1.5
 
-    error_margin = 800000  # 7 days
+    error_margin = 777600  # 7 days
     no_CPs = 0
     no_preds = 0
     no_TPS = 0
@@ -63,6 +73,8 @@ if __name__ == '__main__':
 
     for i in glob.glob(folder):
         if i in ignored:
+            continue
+        if i != '../data3\\A073_T1bottom02.npz':
             continue
         data = np.load(i, allow_pickle=True)
         name = i[-19:-12]
@@ -92,18 +104,31 @@ if __name__ == '__main__':
 
         # initialisation for feature extraction module
         reconstructeds = sliding_window(X, args.ws)
+        reconstructeds = np.expand_dims(reconstructeds, axis=-1)
+
+        feature_extracter = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight, args.dropout)
+        es = EarlyStopping(patience=7, verbose=0, min_delta=0.0001, monitor='val_loss', mode='auto')
+        optimis = RMSprop(learning_rate=0.01)
+        feature_extracter.compile(loss=None, optimizer=optimis)
+        X_train, X_valid = train_test_split(reconstructeds, test_size=0.3, shuffle=True, random_state=1)
+        feature_extracter.fit(X_train, batch_size=args.batch_size, epochs=args.epoch, validation_data=(X_valid, X_valid), callbacks=[es])
+
         class_no = 1
-        memory = reconstructeds
-        if len(reconstructeds) > args.memory_size:
-            random_indices = np.random.choice(len(reconstructeds), size=args.memory_size, replace=False)
-            memory = memory[random_indices]
-        detector = Detector(args.ws, args)
-        z_mean = np.mean(memory, axis=1).reshape(-1,1)
+        memory = X_valid
+        if len(X_valid) < args.memory_size:
+            if len(X_train) >= args.memory_size-len(X_valid):
+                random_indices = np.random.choice(len(X_train), size=(args.memory_size-len(X_valid)), replace=False)
+            else:
+                random_indices = np.random.choice(len(X_train), size=len(X_train), replace=False)
+            memory = np.concatenate((memory, X_train[random_indices]))
+        z_mean, z_log_sigma, z, pred = feature_extracter.predict(memory)
+        detector = Detector(args.ws, feature_extracter, args)
         detector.addsample2memory(memory, z_mean, class_no, len(memory))
 
         ctr = 0
         step = args.bs
         scores = [0]*(args.ws-1)
+        mss = [0] * (args.ws - 1)
         outliers = []
         preds = []
         filtered = []
@@ -112,11 +137,10 @@ if __name__ == '__main__':
         detected = False
         thresholds = [0]*(args.ws-1)
         gt_margin = []
-        cp_ctr = []
         for tt in cps:
             closest_element = ts[ts < tt].max()
             idx = np.where(ts == closest_element)[0][0]
-            gt_margin.append((ts[idx-10], tt+error_margin, tt))
+            gt_margin.append((ts[idx-24], tt+error_margin, tt))
 
         while ctr < test_var_dl.shape[0]:
             new = test_var_dl[ctr:ctr + step]
@@ -149,51 +173,46 @@ if __name__ == '__main__':
                 if len(window) <= args.ws:
                     break
                 window = sliding_window(window, args.ws)
-                z_mean = np.mean(window, axis=1).reshape(-1,1)
+                z_mean, z_log_sigma, z, pred = detector.feature_extracter.predict(window)
 
                 for aa in range(len(z_mean)):
                     score = mean_squared_error(z_mean[aa], detector.current_centroid)
                     scores.append(score)
                     thresholds.append(detector.memory_info[detector.current_index]['threshold'])
-                    if score > detector.memory_info[detector.current_index]['threshold']:
-                        cp_ctr.append(1)
-                        if len(cp_ctr) == args.cp_range + 1:
-                            cp_ctr.pop(0)
-                        if sum(cp_ctr) >= args.cp_range*0.6:
-                            min_dist = 100000
-                            n = 1
-                            dk = None
-                            while n <= len(detector.memory):
-                                distribution = detector.memory[n]['centroid']
-                                cur_threshold = detector.memory_info[n]['threshold']
-                                distance = mean_squared_error(z_mean[aa], distribution)
-                                if distance < cur_threshold:
-                                    if distance < min_dist:
-                                        min_dist = distance
-                                        dk = n
-                                n += 1
-                            if dk is None:
-                                detector.N.append(ctr + aa)
-                                detector.current_index = -1
-                            else:
-                                detector.R.append(ctr + aa)
-                                detector.current_index = dk
-                            collection_period = 0
-                            detected = True
-                            filtered = filtered[:-len(z_mean) + aa + 1]
-                            detector.newsample = []
-                            cp_ctr = []
-                            break
+                    ms = np.mean(scores[-args.cp_range:])
+                    mss.append(ms)
+                    if ms > detector.memory_info[detector.current_index]['threshold']:
+                        min_dist = 100000
+                        n = 1
+                        dk = None
+                        while n <= len(detector.memory):
+                            distribution = detector.memory[n]['centroid']
+                            cur_threshold = detector.memory_info[n]['threshold']
+                            distance = mean_squared_error(z_mean[aa], distribution)
+                            if distance < cur_threshold:
+                                if distance < min_dist:
+                                    min_dist = distance
+                                    dk = n
+                            n += 1
+                        if dk is None:
+                            detector.N.append(ctr + aa)
+                            detector.current_index = -1
+                        else:
+                            detector.R.append(ctr + aa)
+                            detector.current_index = dk
+                        collection_period = 0
+                        detected = True
+                        filtered = filtered[:-len(z_mean) + aa + 1]
+                        detector.newsample = []
+                        break
                     else:
-                        cp_ctr.append(0)
-                        if len(cp_ctr) == args.cp_range + 1:
-                            cp_ctr.pop(0)
                         detector.newsample.append(window[aa])
                 # update the rep and threshold for the current distribution
                 if collection_period > args.min_requirement:
-                    detector.updatememory()
-            elif collection_period < args.min_requirement:
+                    detector.updatememory(args.forgetting_factor)
+            elif collection_period <= args.min_requirement:
                 scores = scores + [0] * step
+                mss = mss + [0] * step
                 thresholds = thresholds + [0] * step
                 if len(sample) == 0:
                     window = np.array(filtered[-step + 1:])
@@ -202,18 +221,43 @@ if __name__ == '__main__':
                 if len(window) <= args.ws:
                     break
                 window = sliding_window(window, args.ws)
-                if collection_period + len(window) < args.min_requirement:
+                if collection_period + len(window) <= args.min_requirement:
                     sample = np.concatenate((sample, window))
                     collection_period += len(window)
                 else: #new
                     sample = np.concatenate((sample, window))
                     if detector.current_index == -1: # new cluster
-                        z_mean = np.mean(sample, axis=1).reshape(-1,1)
+                        new_data = np.expand_dims(sample, axis=-1)
+                        exist_data = np.empty((0, reconstructeds.shape[1], reconstructeds.shape[2]))
+                        jj = 1
+                        while jj <= class_no:
+                            exist_data = np.vstack((exist_data, detector.memory[jj]['sample']))
+                            jj += 1
+                        new_train, new_valid = train_test_split(new_data, test_size=0.75, shuffle=True, random_state=1)
+                        exist_train, exist_valid = train_test_split(exist_data, test_size=0.2, shuffle=True, random_state=1)
+                        train = np.concatenate((new_train, new_train, exist_train))
+                        valid = np.concatenate((new_valid, exist_valid))
+                        detector.feature_extracter.fit(train, batch_size=args.batch_size, epochs=args.epoch, validation_data=(valid, valid), shuffle=True, callbacks=[es])
+                        z_mean, z_log_sigma, z, pred = detector.feature_extracter.predict(new_valid)
                         class_no += 1
-                        detector.addsample2memory(sample, z_mean, class_no, len(sample))
+                        detector.addsample2memory(new_valid, z_mean, class_no, len(new_valid))
                     else: # recurring
-                        z_mean = np.mean(sample, axis=1).reshape(-1,1)
-                        detector.updaterecur(sample, z_mean)
+                        new_train, new_valid = train_test_split(np.expand_dims(sample, axis=-1), test_size=0.75, shuffle=True, random_state=1)
+                        org = detector.memory[detector.current_index]['sample']
+                        others = np.empty((0, reconstructeds.shape[1], reconstructeds.shape[2]))
+                        jj = 1
+                        while jj <= class_no:
+                            if jj == detector.current_index:
+                                jj += 1
+                                continue
+                            others = np.vstack((others, detector.memory[jj]['sample']))
+                            jj += 1
+                        others_train, others_valid = train_test_split(others, test_size=0.2, shuffle=True, random_state=1)
+                        train = np.concatenate((new_train, new_train, org, others_train))
+                        valid = np.concatenate((new_valid, others_valid))
+                        detector.feature_extracter.fit(train, batch_size=args.batch_size, epochs=args.epoch, validation_data=(valid, valid), shuffle=True, callbacks=[es])
+                        z_mean, z_log_sigma, z, pred = detector.feature_extracter.predict(new_valid)
+                        detector.updaterecur(new_valid, z_mean)
                     collection_period = 1000000000
                     sample = np.empty((0, args.ws))
 
@@ -254,6 +298,7 @@ if __name__ == '__main__':
                 ax[0].axvline(x=ts[cp], color='r', alpha=0.6)
             ax[1].plot(ts, scores)
             ax[1].plot(ts, thresholds)
+            ax[1].plot(ts, mss)
             ax[2].plot(ts, filtered)
             plt.savefig(args.outfile + '/' + name + '.png')
         except:
