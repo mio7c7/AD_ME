@@ -7,20 +7,20 @@ import argparse
 import matplotlib.pyplot as plt
 import math
 from scipy.stats import wasserstein_distance
-sys.path.append('./')
+sys.path.append('../')
 from evaluation import Evaluation_metrics
 from ssa.btgym_ssa import SSA
 
 parser = argparse.ArgumentParser(description='LIFEWATCH')
-parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
+parser.add_argument('--data', type=str, default='../005lr/*.npz', help='directory of data')
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
-parser.add_argument('--window_size', type=int, default=20, help='window_size')
-parser.add_argument('--max_points', type=int, default=20, help='min blocks required in a distrib. before starting detection')
-parser.add_argument('--min_batch_size', type=int, default=10, help='mini_batch_size')
+parser.add_argument('--window_size', type=int, default=75, help='window_size')
+parser.add_argument('--max_points', type=int, default=133, help='min blocks required in a distrib. before starting detection')
+parser.add_argument('--min_batch_size', type=int, default=6, help='mini_batch_size')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
-parser.add_argument('--epsilon', type=float, default=0.5, help='epsilon')
-parser.add_argument('--outfile', type=str, default='200_400_05', help='name of file to save results')
+parser.add_argument('--epsilon', type=float, default=1.5, help='epsilon')
+parser.add_argument('--outfile', type=str, default='25_400_20_15', help='name of file to save results')
 args = parser.parse_args()
 
 def ssa_update(new, residuals, resmean, M2, j):
@@ -52,7 +52,7 @@ def preprocess(data, fixed_t):
 if __name__ == '__main__':
     folder = args.data
     fixed_threshold = args.fixed_outlier
-    error_margin = 604800  # 7 days
+    error_margin = 864000  # 7 days
     no_CPs = 0
     no_preds = 0
     no_TPS = 0
@@ -70,15 +70,13 @@ if __name__ == '__main__':
             continue
         data = np.load(i, allow_pickle=True)
         name = i[-19:-12]
-        train_ts, train_dl, test_ts_1gal, test_dl_1gal, label = data['train_ts'], data['train_dl'], data[
-            'test_ts_2gal'], data['test_dl_2gal'], data['label'].item()
+        train_ts, train_dl, test_ts_1gal, test_dl_1gal, cps = data['train_ts'], data['train_dl'], data['test_ts'], data['test_dl'], data['label'].item()
         dl = np.concatenate((train_dl, test_dl_1gal))
         test_dl_1gal = test_dl_1gal[~np.isnan(test_dl_1gal).any(axis=1)]
         test_ts_1gal = test_ts_1gal[~np.isnan(test_ts_1gal).any(axis=1)]
         test_dl_1gal = preprocess(test_dl_1gal, fixed_threshold)
         test_ts_1gal = preprocess(test_ts_1gal, fixed_threshold)
         ts = test_dl_1gal[:, 0]
-        cps = label['test_2gal']
         train_var_dl = train_dl[:, 1]
         test_var_dl = test_dl_1gal[:, 1]
 
@@ -98,7 +96,6 @@ if __name__ == '__main__':
 
         # initialisation
         ws = args.window_size
-        reconstructeds = sliding_window(X, ws)
         preds = []
         outliers = []
         input = test_var_dl.copy()
@@ -108,8 +105,20 @@ if __name__ == '__main__':
         scores = []
         thresholds = []
         ct = 0
-        for mm in range(len(reconstructeds)):
-            detector.current_distribution = np.append(detector.current_distribution, reconstructeds[mm].reshape((1, -1)), axis=0)
+        gt_margin = []
+        cp_ctr = []
+        for tt in cps:
+            closest_element = ts[ts < tt].max()
+            idx = np.where(ts == closest_element)[0][0]
+            gt_margin.append((ts[idx - 10], tt + error_margin, tt))
+
+        mm = 0
+        while mm < len(reconstructeds)-args.window_size:
+            detector.current_distribution = np.append(detector.current_distribution, X[mm:mm+args.window_size].reshape((1, -1)), axis=0)
+            mm += args.window_size
+            if len(detector.current_distribution) == args.max_points:
+                break
+
         if len(detector.current_distribution) >= args.min_batch_size:  # 9
             dis_threshold = detector.compute_threshold()  # 10
             detector.distribution_threshold.append(dis_threshold)  # 10
@@ -143,7 +152,10 @@ if __name__ == '__main__':
                 ys.append(data[k])
             filtered = filtered + ys
             scores = scores + [0]*ws
-            thresholds = thresholds + [detector.distribution_threshold[detector.current_distribution_index]] * ws
+            if detector.current_distribution_index is None:
+                thresholds = thresholds + [0] * ws
+            else:
+                thresholds = thresholds + [detector.distribution_threshold[detector.current_distribution_index]] * ws
             # current Bi
             Bi = np.array(ys)
             if len(detector.current_distribution) < args.min_batch_size:
@@ -157,7 +169,7 @@ if __name__ == '__main__':
             else:
                 x = Bi
                 y = detector.current_distribution
-                distance = args.epsilon*wasserstein_distance(x, y.reshape(-1))
+                distance = wasserstein_distance(x, y.reshape(-1))
                 scores[-1] = distance
                 if distance > detector.distribution_threshold[detector.current_distribution_index]:
                     min_dist = 100000
@@ -166,7 +178,7 @@ if __name__ == '__main__':
                     while m < len(detector.distribution_pool):
                         distribution = detector.distribution_pool[m]
                         cur_threshold = detector.distribution_threshold[m]
-                        distance = args.epsilon*wasserstein_distance(x, distribution.reshape(-1))
+                        distance = wasserstein_distance(x, distribution.reshape(-1))
                         if distance < cur_threshold:
                             if distance < min_dist:
                                 min_dist = distance
@@ -212,17 +224,22 @@ if __name__ == '__main__':
             ax[2].axvline(x=ts[cp], color='r', alpha=0.6)
         ax[2].plot(ts, scores)
         ax[2].plot(ts, thresholds)
-        # plt.savefig(args.outfile + '/' + name + '.png')
-
+        plt.savefig(args.outfile + '/' + name + '.png')
 
         no_CPs += len(cps)
         no_preds += len(preds)
+        mark = []
         for j in preds:
             timestamp = ts[j]
-            for l in cps:
-                if timestamp >= l and timestamp <= l + error_margin:
+            for l in gt_margin:
+                if timestamp >= l[0] and timestamp <= l[1]:
+                    if l not in mark:
+                        mark.append(l)
+                    else:
+                        no_preds -= 1
+                        continue
                     no_TPS += 1
-                    delays.append(timestamp - l)
+                    delays.append(timestamp - l[2])
     #
     rec = Evaluation_metrics.recall(no_TPS, no_CPs)
     FAR = Evaluation_metrics.False_Alarm_Rate(no_preds, no_TPS)

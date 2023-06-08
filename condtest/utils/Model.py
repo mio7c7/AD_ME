@@ -33,12 +33,14 @@ class Encoder(Model):
         self.z_sample = Sampling()
         self.flat = Flatten()
         self.dropout = Dropout(dropout)
+        self.batchnorm = BatchNormalization(momentum=0.6)
 
     def call(self, inputs):
         self.encoder_inputs = inputs
         flat = self.flat(self.encoder_inputs)
         hidden = self.encoder(flat)
-        hidden = self.dropout(hidden)
+        # hidden = self.dropout(hidden)
+        hidden = self.batchnorm(hidden)
         z_mean = self.z_mean(hidden)
         z_log_sigma = self.z_log_sigma(hidden)
         z = self.z_sample((z_mean, z_log_sigma))
@@ -51,10 +53,12 @@ class Decoder(Layer):
         self.dec = Dense(timestep, activation='sigmoid')
         self.reshape = Reshape((timestep, input_dim))
         self.dropout = Dropout(dropout)
+        self.batchnorm = BatchNormalization(momentum=0.6)
 
     def call(self, inputs):
         hidden =self.decoder(inputs)
-        hidden = self.dropout(hidden)
+        # hidden = self.dropout(hidden)
+        hidden = self.batchnorm(hidden)
         pred = self.reshape(self.dec(hidden))
         return pred
 

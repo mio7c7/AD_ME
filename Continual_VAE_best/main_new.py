@@ -73,14 +73,13 @@ if __name__ == '__main__':
             continue
         data = np.load(i, allow_pickle=True)
         name = i[-19:-12]
-        train_ts, train_dl, test_ts_1gal, test_dl_1gal, label = data['train_ts'], data['train_dl'], data['test_ts_2gal'], data['test_dl_2gal'], data['label'].item()
+        train_ts, train_dl, test_ts_1gal, test_dl_1gal, cps = data['train_ts'], data['train_dl'], data['test_ts'], data['test_dl'], data['label'].item()
         dl = np.concatenate((train_dl, test_dl_1gal))
         test_dl_1gal = test_dl_1gal[~np.isnan(test_dl_1gal).any(axis=1)]
         test_ts_1gal = test_ts_1gal[~np.isnan(test_ts_1gal).any(axis=1)]
         test_dl_1gal = preprocess(test_dl_1gal, fixed_threshold)
         test_ts_1gal = preprocess(test_ts_1gal, fixed_threshold)
         ts = test_dl_1gal[:, 0]
-        cps = label['test_2gal']
         train_var_dl = train_dl[:, 1]
         test_var_dl = test_dl_1gal[:, 1]
 

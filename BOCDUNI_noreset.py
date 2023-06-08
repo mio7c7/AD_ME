@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import glob
 from itertools import islice
+import os
 # from sklearn.cluster import DBSCAN, KMeans, MeanShift
 from sklearn.metrics.pairwise import euclidean_distances
 from bayesian_changepoint_detection.bayesian_models import online_changepoint_detection
@@ -26,11 +27,11 @@ parser = argparse.ArgumentParser(description='Mstatistics evaluation on bottom 0
 parser.add_argument('--data', type=str, default='./data3/*.npz', help='directory of data')
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
 parser.add_argument('--bs', type=int, default=24, help='buffer size for ssa')
-parser.add_argument('--threshold', type=float, default=0.6, help='Threshold')
-parser.add_argument('--delay', type=int, default=10, help='Threshold')
-parser.add_argument('--initial_period', type=int, default=30, help='initialisation period')
+parser.add_argument('--threshold', type=float, default=0.5, help='Threshold')
+parser.add_argument('--delay', type=int, default=50, help='Threshold')
+parser.add_argument('--initial_period', type=int, default=50, help='initialisation period')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
-parser.add_argument('--outfile', type=str, default='15IQRMED11WND100', help='name of file to save results')
+parser.add_argument('--outfile', type=str, default='bocd', help='name of file to save results')
 args = parser.parse_args()
 
 colors = ['red','green','blue','purple']
@@ -91,46 +92,43 @@ def normalisation(array, test):
     return array_norm, test_norm
 
 if __name__ == '__main__':
-    folder = './data3/*.npz'
-    WINDOW = 10
-    mean_lr, std_lr, scale_lr = 0.1, 0.00001, 1
-    batch_size = 32
-    train_epochs = 2
+    folder = args.data
     buffer_size = 24
-    minimum_size = 20
-    maximum_storage_time = 3
-    esp = 0.1
     hazard_function = partial(constant_hazard, 1440)
     lambda_ = 1440
     delay = args.delay
     fixed_threshold = 1.5
 
-    error_margin = 604800  # 7 days
+    error_margin = 864000  # 7 days
     no_CPs = 0
     no_preds = 0
     no_TPS = 0
     delays = []
     initial_period = args.initial_period
 
-    ignored = ['../data3\\A043_T2bottom02.npz', '../data3\\A441_T2bottom02.npz',
-               '../data3\\B402_T3bottom02.npz', '../data3\\B402_T4bottom02.npz',
-               '../data3\\B402_T4bottom06.npz', '../data3\\F257_T2bottom02.npz',
-               '../data3\\F257_T2bottom05.npz', '../data3\\F289_T4bottom02.npz',]
+    if not os.path.exists(args.outfile):
+        os.makedirs(args.outfile)
+
+    ignored = ['data3\\A043_T2bottom02.npz', 'data3\\A441_T2bottom02.npz',
+               'data3\\B402_T3bottom02.npz', 'data3\\B402_T4bottom02.npz',
+               'data3\\B402_T4bottom06.npz', 'data3\\F257_T2bottom02.npz',
+               'data3\\F257_T2bottom05.npz', 'data3\\F289_T4bottom02.npz',]
 
     for i in glob.glob(folder):
         if i in ignored:
             continue
+        # if i !='../data3\\J496_T5bottom02.npz' and i !='../data3\\J802_T1bottom02.npz' and i !='../data3\\J023_T1bottom02.npz' and i !='../data3\\Q152_T2bottom02.npz':
+        # if i !='./data3\\H915_T2bottom02.npz':
+        #     continue
         data = np.load(i, allow_pickle=True)
         name = i[-19:-12]
-        train_ts, train_dl, test_ts_1gal, test_dl_1gal, label = data['train_ts'], data['train_dl'], data[
-            'test_ts_2gal'], data['test_dl_2gal'], data['label'].item()
+        train_ts, train_dl, test_ts_1gal, test_dl_1gal, cps = data['train_ts'], data['train_dl'], data['test_ts'], data['test_dl'], data['label'].item()
         dl = np.concatenate((train_dl, test_dl_1gal))
         test_dl_1gal = test_dl_1gal[~np.isnan(test_dl_1gal).any(axis=1)]
         test_ts_1gal = test_ts_1gal[~np.isnan(test_ts_1gal).any(axis=1)]
         test_dl_1gal = preprocess(test_dl_1gal, fixed_threshold)
         test_ts_1gal = preprocess(test_ts_1gal, fixed_threshold)
         ts = test_dl_1gal[:, 0]
-        cps = label['test_2gal']
         train_var_dl = train_dl[:, 1]
         test_var_dl = test_dl_1gal[:, 1]
 
@@ -163,6 +161,12 @@ if __name__ == '__main__':
         scores = []
         step = args.bs
         filtered = []
+        gt_margin = []
+        cp_ctr = []
+        for tt in cps:
+            closest_element = ts[ts < tt].max()
+            idx = np.where(ts == closest_element)[0][0]
+            gt_margin.append((ts[idx - 10], tt + error_margin, tt))
 
         while ctr < len(test_var_dl):
             new = test_var_dl[ctr:ctr + step]
@@ -206,10 +210,18 @@ if __name__ == '__main__':
             else:
                 ctr += args.bs
 
+        no_CPs += len(cps)
+        no_preds += len(preds)
+        mark = []
         for j in preds:
             timestamp = ts[j]
             for l in gt_margin:
                 if timestamp >= l[0] and timestamp <= l[1]:
+                    if l not in mark:
+                        mark.append(l)
+                    else:
+                        no_preds -= 1
+                        continue
                     no_TPS += 1
                     delays.append(timestamp - l[2])
 
@@ -222,7 +234,7 @@ if __name__ == '__main__':
         ax[1].plot(ts, scores)
         for cp in preds:
             ax[1].axvline(x=ts[cp], color='g', alpha=0.6)
-        plt.savefig(name + '.png')
+        plt.savefig(args.outfile + '/' + name + '.png')
 
     rec = Evaluation_metrics.recall(no_TPS, no_CPs)
     FAR = Evaluation_metrics.False_Alarm_Rate(no_preds, no_TPS)

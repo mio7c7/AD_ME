@@ -37,8 +37,9 @@ class Detector():
 
     def resample(self, new_sample):
         org = self.memory[self.current_index]['sample']
+        old = org
         if self.memory_info[self.current_index]['seen'] <= self.args.memory_size:
-            forgetting_factor = 0.65
+            forgetting_factor = 0.85
             threshold = self.args.threshold + 1
         elif self.memory_info[self.current_index]['seen'] <= 4000:
             forgetting_factor = 0.69444444444 - 0.4*self.memory_info[self.current_index]['seen']/3600
@@ -47,7 +48,7 @@ class Detector():
             else:
                 threshold = self.args.threshold + 0.25
         else:
-            forgetting_factor = 0.25
+            forgetting_factor = 0.45
             threshold = self.args.threshold
         if len(org) < self.args.memory_size:
             full = self.args.memory_size - len(org)
@@ -58,9 +59,9 @@ class Detector():
                 org = np.delete(org, 0, axis=0)
                 org = np.concatenate((org, np.expand_dims(ss, axis=0)), axis=0)
         sam = org
+        self.memory_info[self.current_index]['threshold'] = self.compute_threshold(old, self.current_centroid,threshold)
         self.memory[self.current_index]['centroid'] = np.mean(sam, axis=0)
         self.current_centroid = self.memory[self.current_index]['centroid']
-        self.memory_info[self.current_index]['threshold'] = self.compute_threshold(sam, self.current_centroid, threshold)
         self.memory_info[self.current_index]['seen'] += len(new_sample)
 
     def updatememory(self):
@@ -71,18 +72,20 @@ class Detector():
         MMD = [maximum_mean_discrepancy(rep[i].reshape(-1, 1), centroid.reshape(-1, 1)) for i in range(len(rep))]
         mse_quantile = np.quantile(MMD, self.args.quantile)
         threshold = threshold * mse_quantile
-        return threshold
-        # MSE = [maximum_mean_discrepancy(rep[i].reshape(-1, 1), centroid.reshape(-1, 1)) for i in range(len(rep))]
-        # threshold = np.mean(MSE) + threshold * np.std(MSE)
+        # threshold = np.mean(MMD) + threshold * np.std(MMD)
         return threshold
 
     def updaterecur(self, new):
         org = self.memory[self.current_index]['sample']
-        random_indices = np.random.choice(len(org) - 1, size=(self.args.memory_size - len(new)), replace=True)
-        sample = np.concatenate((org[random_indices], new))
-        self.memory[self.current_index]['sample'] = sample
-        self.memory[self.current_index]['centroid'] = np.mean(sample, axis=0)
+        for ss in range(len(new)):
+            if len(org) < self.args.memory_size:
+                org = np.concatenate((org, np.expand_dims(new[ss], axis=0)), axis=0)
+            else:
+                org = np.delete(org, 0, axis=0)
+                org = np.concatenate((org, np.expand_dims(new[ss], axis=0)), axis=0)
+        self.memory[self.current_index]['sample'] = org
+        self.memory[self.current_index]['centroid'] = np.mean(org, axis=0)
         self.current_centroid = self.memory[self.current_index]['centroid']
-        threshold = self.compute_threshold(sample, self.current_centroid, self.args.threshold + 1)
+        threshold = self.compute_threshold(org, self.current_centroid, self.args.threshold + 1)
         self.memory_info[self.current_index]['threshold'] = threshold
         self.memory_info[self.current_index]['seen'] = len(new)

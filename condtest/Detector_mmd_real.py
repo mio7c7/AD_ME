@@ -33,10 +33,15 @@ class Detector():
         self.current_index = class_no
         self.current_centroid = self.memory[class_no]['centroid']
         threshold = self.compute_threshold(sample, self.current_centroid, self.args.threshold + 1)
+        quantile_sample = [maximum_mean_discrepancy(sample[i].reshape(-1, 1), self.current_centroid.reshape(-1, 1)) for i in range(len(sample))]
+        indices = list(np.where(quantile_sample > threshold)[0])
+        self.memory[class_no]['quantile_sample'] = sample[indices]
+        self.memory[self.current_index]['sample'] = np.delete(sample, indices, axis=0)
         self.memory_info[class_no] = {'size': len(sample), 'threshold': threshold, 'seen': seen}
 
     def resample(self, new_sample):
         org = self.memory[self.current_index]['sample']
+        old = org
         if self.memory_info[self.current_index]['seen'] <= self.args.memory_size:
             forgetting_factor = 0.65
             threshold = self.args.threshold + 1
@@ -57,11 +62,15 @@ class Detector():
             if random.random() < forgetting_factor:
                 org = np.delete(org, 0, axis=0)
                 org = np.concatenate((org, np.expand_dims(ss, axis=0)), axis=0)
-        sam = org
+        sam = np.concatenate((org, self.memory[self.current_index]['quantile_sample']))
+        self.memory_info[self.current_index]['threshold'] = self.compute_threshold(old, self.current_centroid,threshold)
         self.memory[self.current_index]['centroid'] = np.mean(sam, axis=0)
         self.current_centroid = self.memory[self.current_index]['centroid']
-        self.memory_info[self.current_index]['threshold'] = self.compute_threshold(sam, self.current_centroid, threshold)
         self.memory_info[self.current_index]['seen'] += len(new_sample)
+        quantile_sample = [maximum_mean_discrepancy(sam[i].reshape(-1, 1), self.current_centroid.reshape(-1, 1)) for i in range(len(sam))]
+        indices = list(np.where(quantile_sample > self.memory_info[self.current_index]['threshold'])[0])
+        self.memory[self.current_index]['quantile_sample'] = sam[indices]
+        self.memory[self.current_index]['sample'] = np.delete(sam, indices, axis=0)
 
     def updatememory(self):
         self.resample(self.newsample)
@@ -74,7 +83,7 @@ class Detector():
         return threshold
         # MSE = [maximum_mean_discrepancy(rep[i].reshape(-1, 1), centroid.reshape(-1, 1)) for i in range(len(rep))]
         # threshold = np.mean(MSE) + threshold * np.std(MSE)
-        return threshold
+        # return threshold
 
     def updaterecur(self, new):
         org = self.memory[self.current_index]['sample']
@@ -86,3 +95,8 @@ class Detector():
         threshold = self.compute_threshold(sample, self.current_centroid, self.args.threshold + 1)
         self.memory_info[self.current_index]['threshold'] = threshold
         self.memory_info[self.current_index]['seen'] = len(new)
+        quantile_sample = [mean_squared_error(sample[i], self.memory[self.current_index]['centroid']) for i in
+                           range(len(sample))]
+        indices = list(np.where(quantile_sample > threshold)[0])
+        self.memory[self.current_index]['quantile_sample'] = sample[indices]
+        self.memory[self.current_index]['sample'] = np.delete(sample, indices, axis=0)

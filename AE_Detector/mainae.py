@@ -4,13 +4,13 @@ import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-from Model import VAE
+from ae import AE
 from tensorflow.keras.models import Model
 from tensorflow.keras import backend as K
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.optimizers import *
 import math
-sys.path.append('./')
+sys.path.append('../')
 from evaluation import Evaluation_metrics
 from ssa.btgym_ssa import SSA
 
@@ -18,20 +18,17 @@ parser = argparse.ArgumentParser(description='Mstatistics evaluation on bottom 0
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
 parser.add_argument('--g_noise', type=float, default=0.01, help='white noise')
-parser.add_argument('--buffer_ts', type=int, default=500, help='white noise')
+parser.add_argument('--buffer_ts', type=int, default=500, help='cold start period')
 parser.add_argument('--bs', type=int, default=150, help='buffer size for ssa')
 parser.add_argument('--ws', type=int, default=100, help='window size')
-parser.add_argument('--memory_size', type=int, default=200, help='memory size per distribution ')
-parser.add_argument('--dense_dim', type=int, default=2, help='no of neuron in dense')
+parser.add_argument('--dense_dim', type=int, default=4, help='no of neuron in dense')
 parser.add_argument('--dropout', type=float, default=0.5, help='dropout')
-parser.add_argument('--kl_weight', type=float, default=1, help='kl_weight')
-parser.add_argument('--latent_dim', type=int, default=1, help='latent_dim')
 parser.add_argument('--batch_size', type=int, default=32, help='batch_size')
 parser.add_argument('--epoch', type=int, default=100, help='epoch')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
-parser.add_argument('--threshold', type=float, default=1.5, help='threshold')
+parser.add_argument('--threshold', type=float, default=1.25, help='threshold')
 parser.add_argument('--fixed_outlier', type=float, default=1.5, help='preprocess outlier filter')
-parser.add_argument('--outfile', type=str, default='vae', help='name of file to save results')
+parser.add_argument('--outfile', type=str, default='ae', help='name of file to save results')
 args = parser.parse_args()
 
 def preprocess(data, fixed_t):
@@ -42,7 +39,7 @@ def preprocess(data, fixed_t):
     return np.delete(data, del_idx, axis=0)
 
 def sliding_window(elements, window_size):
-    if len(elements) <= window_size:
+    if len(elements) < window_size:
         return elements
     new = np.empty((0, window_size))
     for i in range(len(elements) - window_size + 1):
@@ -92,13 +89,12 @@ if __name__ == '__main__':
         noisy_Data = sliding_window(noisy_Data, args.ws)
         noisy_Data = np.expand_dims(noisy_Data, axis=-1)
         reconstructeds = sliding_window(X, args.ws)
-        vae = VAE(args.ws, 1, args.dense_dim, 'elu', args.latent_dim, args.kl_weight, args.dropout)
+        vae = AE(args.ws, 1, args.dense_dim, 'relu', args.dropout)
         es = EarlyStopping(patience=7, verbose=0, min_delta=0.0001, monitor='val_loss', mode='auto')
-        optimis = RMSprop(learning_rate=0.01)
+        optimis = RMSprop(learning_rate=0.001)
         vae.compile(loss=None, optimizer=optimis)
-        vae.fit(noisy_Data, batch_size=args.batch_size, epochs=args.epoch,
-                              validation_split=0.3, callbacks=[es])
-        z_mean, z_log_sigma, z, pred = vae.predict(noisy_Data)
+        vae.fit(noisy_Data, batch_size=args.batch_size, epochs=args.epoch, validation_split=0.3, callbacks=[es])
+        z, pred = vae.predict(noisy_Data)
         MAE = np.mean(np.mean(np.abs(np.squeeze(pred, axis=-1) - reconstructeds), axis=1))
         threshold = args.threshold * MAE
 
@@ -118,28 +114,6 @@ if __name__ == '__main__':
             gt_margin.append((ts[idx - 10], tt + error_margin, tt))
         initial = True
         collect = False
-        # es = EarlyStopping(patience=5, verbose=1, min_delta=0.00001, monitor='val_loss', mode='auto',
-        #                    restore_best_weights=True)
-        # # 建立模型
-        # vae = Model(x, x_decoded_mean)
-        # # xent_loss是重构loss，kl_loss是KL loss
-        # xent_loss = K.sum(K.binary_crossentropy(x, x_decoded_mean), axis=-1)
-        # kl_loss = - 0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-        # vae_loss = K.mean(xent_loss + kl_loss)
-        #
-        # # add_loss是新增的方法，用于更灵活地添加各种loss
-        # vae.add_loss(vae_loss)
-        # vae.compile(optimizer='rmsprop')
-        # vae.summary()
-        # # initialise CPD model
-        # noise = np.random.normal(0, args.g_noise, size=(X.shape[0]))
-        # noisy_Data = X + noise
-        # noisy_Data = sliding_window(noisy_Data, w)
-        # X = sliding_window(X, w)
-        #
-        # vae.fit(noisy_Data, epochs=args.epoch, batch_size= args.batch_size, shuffle=True, validation_split=0.2, callbacks=[es])
-        # MAE = np.mean(np.abs(vae.predict(noisy_Data) - X))
-        # threshold = args.threshold * MAE
 
         while ctr < test_var_dl.shape[0]:
             new = test_var_dl[ctr:ctr + step]
@@ -173,9 +147,11 @@ if __name__ == '__main__':
                 noisy_Data = sliding_window(noisy_Data, args.ws)
                 noisy_Data = np.expand_dims(noisy_Data, axis=-1)
                 X = sliding_window(X, args.ws)
+                # vae = AE(args.ws, 1, args.dense_dim, 'relu', args.dropout)
+                # vae.compile(loss=None, optimizer=optimis)
                 vae.fit(noisy_Data, batch_size=args.batch_size, epochs=args.epoch,
                         validation_split=0.3, callbacks=[es])
-                z_mean, z_log_sigma, z, pred = vae.predict(noisy_Data)
+                z, pred = vae.predict(noisy_Data)
                 MAE = np.mean(np.mean(np.abs(np.squeeze(pred, axis=-1) - X), axis=1))
                 threshold = args.threshold * MAE
                 initial = False
@@ -185,7 +161,7 @@ if __name__ == '__main__':
                     continue
                 window = np.array(filtered[-args.ws - step + 1:])
                 window = sliding_window(window, args.ws)
-                _, _, _, pred = vae.predict(window)
+                _, pred = vae.predict(window)
                 for aa in range(len(pred)):
                     score = np.mean(np.abs(np.squeeze(pred[aa], axis=-1) - window))
                     scores[ctr+aa] = score
@@ -193,6 +169,7 @@ if __name__ == '__main__':
                         preds.append(ctr+aa)
                         List_st = []
                         collect = True
+                        initial = False
                         break
 
             if len(test_var_dl) - ctr <= args.bs:

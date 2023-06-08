@@ -14,12 +14,12 @@ from ssa.btgym_ssa import SSA
 parser = argparse.ArgumentParser(description='LIFEWATCH')
 parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
-parser.add_argument('--window_size', type=int, default=20, help='window_size')
-parser.add_argument('--max_points', type=int, default=1000, help='min blocks required in a distrib. before starting detection')
-parser.add_argument('--min_batch_size', type=int, default=24, help='mini_batch_size')
+parser.add_argument('--window_size', type=int, default=25, help='window_size')
+parser.add_argument('--max_points', type=int, default=400, help='min blocks required in a distrib. before starting detection')
+parser.add_argument('--min_batch_size', type=int, default=20, help='mini_batch_size')
 parser.add_argument('--threshold', type=float, default=5, help='threshold')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
-parser.add_argument('--epsilon', type=float, default=1, help='epsilon')
+parser.add_argument('--epsilon', type=float, default=5, help='epsilon')
 parser.add_argument('--outfile', type=str, default='15IQRMED11WND100', help='name of file to save results')
 args = parser.parse_args()
 
@@ -46,7 +46,7 @@ if __name__ == '__main__':
     fixed_threshold = args.fixed_outlier
     threshold = args.threshold
 
-    error_margin = 604800  # 7 days
+    error_margin = 864000  # 7 days
     no_CPs = 0
     no_preds = 0
     no_TPS = 0
@@ -88,6 +88,12 @@ if __name__ == '__main__':
         resmean = residuals.mean()
         M2 = ((residuals - resmean) ** 2).sum() * (len(residuals) - 1) * residuals.var()
         detector = Detector(ws, args.epsilon)
+        gt_margin = []
+        cp_ctr = []
+        for tt in cps:
+            closest_element = ts[ts < tt].max()
+            idx = np.where(ts == closest_element)[0][0]
+            gt_margin.append((ts[idx - 10], tt + error_margin, tt))
 
         while ctr <= len(input):
             data = test_var_dl[ctr:ctr + ws]
@@ -109,6 +115,7 @@ if __name__ == '__main__':
                 threshold_lower = resmean - 2 * stdev
                 if residual[k] > threshold_upper or residual[k] < threshold_lower:
                     outliers.append(ctr + k)
+
                     ys.append(0)
                     continue
                 ys.append(reconstructed[k])
@@ -178,12 +185,18 @@ if __name__ == '__main__':
         plt.savefig(name + '.png')
         no_CPs += len(cps)
         no_preds += len(preds)
+        mark = []
         for j in preds:
             timestamp = ts[j]
-            for l in cps:
-                if timestamp >= l and timestamp <= l + error_margin:
+            for l in gt_margin:
+                if timestamp >= l[0] and timestamp <= l[1]:
+                    if l not in mark:
+                        mark.append(l)
+                    else:
+                        no_preds -= 1
+                        continue
                     no_TPS += 1
-                    delays.append(timestamp - l)
+                    delays.append(timestamp - l[2])
     #
     rec = Evaluation_metrics.recall(no_TPS, no_CPs)
     FAR = Evaluation_metrics.False_Alarm_Rate(no_preds, no_TPS)

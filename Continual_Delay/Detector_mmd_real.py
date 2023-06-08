@@ -37,6 +37,7 @@ class Detector():
 
     def resample(self, new_sample):
         org = self.memory[self.current_index]['sample']
+        old = org
         if self.memory_info[self.current_index]['seen'] <= self.args.memory_size:
             forgetting_factor = 0.65
             threshold = self.args.threshold + 1
@@ -58,9 +59,9 @@ class Detector():
                 org = np.delete(org, 0, axis=0)
                 org = np.concatenate((org, np.expand_dims(ss, axis=0)), axis=0)
         sam = org
+        self.memory_info[self.current_index]['threshold'] = self.compute_threshold(old, self.current_centroid,threshold)
         self.memory[self.current_index]['centroid'] = np.mean(sam, axis=0)
         self.current_centroid = self.memory[self.current_index]['centroid']
-        self.memory_info[self.current_index]['threshold'] = self.compute_threshold(sam, self.current_centroid, threshold)
         self.memory_info[self.current_index]['seen'] += len(new_sample)
 
     def updatememory(self):

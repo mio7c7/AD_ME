@@ -3,11 +3,8 @@ import sys
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.model_selection import train_test_split
 from Detector_mmd_real import Detector
 from sklearn.metrics.pairwise import pairwise_kernels
-from sklearn.decomposition import KernelPCA
-from sklearn.metrics.pairwise import rbf_kernel
 import math
 sys.path.append('./')
 from evaluation import Evaluation_metrics
@@ -15,19 +12,19 @@ from ssa.btgym_ssa import SSA
 import os
 
 parser = argparse.ArgumentParser(description='Mstatistics evaluation on bottom 0.2 data')
-parser.add_argument('--data', type=str, default='../01lr/*.npz', help='directory of data')
+parser.add_argument('--data', type=str, default='../data3/*.npz', help='directory of data')
 parser.add_argument('--ssa_window', type=int, default=5, help='n_components for ssa preprocessing')
 parser.add_argument('--bs', type=int, default=150, help='buffer size for ssa')
 parser.add_argument('--ws', type=int, default=100, help='window size')
 parser.add_argument('--min_requirement', type=int, default=300, help='window size')
 parser.add_argument('--memory_size', type=int, default=500, help='memory size per distribution ')
-parser.add_argument('--cp_range', type=int, default=10, help='range to determine cp')
+parser.add_argument('--cp_range', type=int, default=5, help='range to determine cp')
 parser.add_argument('--forgetting_factor', type=float, default=0.55, help='forgetting_factor')
 parser.add_argument('--out_threshold', type=float, default=2, help='threshold for outlier filtering')
 parser.add_argument('--threshold', type=float, default=3, help='threshold')
 parser.add_argument('--quantile', type=float, default=0.975, help='quantile')
 parser.add_argument('--fixed_outlier', type=float, default=1, help='preprocess outlier filter')
-parser.add_argument('--outfile', type=str, default='mmd01', help='name of file to save results')
+parser.add_argument('--outfile', type=str, default='mmd02', help='name of file to save results')
 
 args = parser.parse_args()
 def preprocess(data, fixed_t):
@@ -62,7 +59,7 @@ if __name__ == '__main__':
     folder = args.data
     fixed_threshold = 1.5
 
-    error_margin = 1136800 # 12 days
+    error_margin = 864000 # 10 days
     no_CPs = 0
     no_preds = 0
     no_TPS = 0
@@ -83,17 +80,15 @@ if __name__ == '__main__':
         #     continue
         data = np.load(i, allow_pickle=True)
         name = i[-19:-12]
-        train_ts, train_dl, test_ts_1gal, test_dl_1gal, label = data['train_ts'], data['train_dl'], data['test_ts_1gal'], data['test_dl_1gal'], data['label'].item()
+        train_ts, train_dl, test_ts_1gal, test_dl_1gal, cps = data['train_ts'], data['train_dl'], data['test_ts'], data['test_dl'], data['label'].item()
         dl = np.concatenate((train_dl, test_dl_1gal))
         test_dl_1gal = test_dl_1gal[~np.isnan(test_dl_1gal).any(axis=1)]
         test_ts_1gal = test_ts_1gal[~np.isnan(test_ts_1gal).any(axis=1)]
         test_dl_1gal = preprocess(test_dl_1gal, fixed_threshold)
         test_ts_1gal = preprocess(test_ts_1gal, fixed_threshold)
         ts = test_dl_1gal[:, 0]
-        cps = label['test_1gal']
         train_var_dl = train_dl[:, 1]
         test_var_dl = test_dl_1gal[:, 1]
-
         train_dl_2gal = train_dl[~np.isnan(train_dl).any(axis=1)]
         train_dl_2gal = preprocess(train_dl_2gal, fixed_threshold)
 
@@ -260,17 +255,23 @@ if __name__ == '__main__':
             ax[1].plot(ts, thresholds)
             # ax[1].plot(ts, mss)
             ax[2].plot(ts, filtered)
-            plt.savefig(args.outfile + '/' + name + '.png')
+            # plt.savefig(args.outfile + '/' + name + '.png')
         except:
             print()
 
         preds = detector.N + detector.R
         no_CPs += len(cps)
         no_preds += len(preds)
+        mark = []
         for j in preds:
             timestamp = ts[j]
             for l in gt_margin:
                 if timestamp >= l[0] and timestamp <= l[1]:
+                    if l not in mark:
+                        mark.append(l)
+                    else:
+                        no_preds -= 1
+                        continue
                     no_TPS += 1
                     delays.append(timestamp - l[2])
 
